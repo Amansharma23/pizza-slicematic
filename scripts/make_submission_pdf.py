@@ -39,8 +39,9 @@ def PF(path, size):
     except Exception:
         return ImageFont.load_default()
 
-FONT = PF(FONTDIR + "segoeui.ttf", 13)
-FONT_SM = PF(FONTDIR + "segoeui.ttf", 10)
+FONT = PF(FONTDIR + "segoeui.ttf", 15)
+FONT_SM = PF(FONTDIR + "segoeui.ttf", 11)
+FONT_BADGE = PF(FONTDIR + "segoeuib.ttf", 12)
 
 COL = {
     "start": ((226, 232, 209), OLIVE),
@@ -81,59 +82,128 @@ def arrow(draw, x1, y1, x2, y2, color=(80, 80, 80)):
                   fill=color, width=2 * S)
 
 
-def render_flow(nodes, path):
-    NW, NH, VGAP = 300 * S, 64 * S, 50 * S
-    top, bottom = 24 * S, 24 * S
-    cx = 230 * S
-    canvas_w = 600 * S
+def _text_centered(d, x, ycen, w, text, font, fill):
+    lines = wrap(d, text, font, w)
+    lh = (font.getbbox("Ag")[3] - font.getbbox("Ag")[1]) + 5 * S
+    ty = ycen - (len(lines) * lh) // 2
+    for ln in lines:
+        tw = d.textlength(ln, font=font)
+        d.text((x - tw / 2, ty), ln, fill=fill, font=font); ty += lh
+
+
+def _badge(d, cx_left, cy_top, num):
+    r = 12 * S
+    x, y = cx_left + 12 * S, cy_top + 12 * S
+    d.ellipse((x - r, y - r, x + r, y + r), fill=OLIVE, outline="white", width=2 * S)
+    t = str(num); tw = d.textlength(t, font=FONT_BADGE)
+    bb = FONT_BADGE.getbbox(t)
+    d.text((x - tw / 2, y - (bb[3] + bb[1]) / 2), t, fill="white", font=FONT_BADGE)
+
+
+def _loop(d, x, ycen, NW, NH, side):
+    col = (150, 120, 40)
+    if side == "right":
+        e = x + NW // 2; o = e + 34 * S
+        d.line((e, ycen, o, ycen), fill=col, width=2 * S)
+        d.line((o, ycen, o, ycen - NH // 2 - 12 * S), fill=col, width=2 * S)
+        arrow(d, o, ycen - NH // 2 - 12 * S, x + NW // 4, ycen - NH // 2, col)
+    else:
+        e = x - NW // 2; o = e - 34 * S
+        d.line((e, ycen, o, ycen), fill=col, width=2 * S)
+        d.line((o, ycen, o, ycen - NH // 2 - 12 * S), fill=col, width=2 * S)
+        arrow(d, o, ycen - NH // 2 - 12 * S, x - NW // 4, ycen - NH // 2, col)
+
+
+def _branch(d, branch, x, ycen, NW, NH, side):
+    label, btext = branch
+    bw, bh = 64 * S, 44 * S
+    ef, eo = COL["exit"]
+    if side == "left":
+        e = x - NW // 2; bx = e - 40 * S - bw // 2
+        arrow(d, e, ycen, bx + bw // 2, ycen, (120, 95, 80))
+    else:
+        e = x + NW // 2; bx = e + 40 * S + bw // 2
+        arrow(d, e, ycen, bx - bw // 2, ycen, (120, 95, 80))
+    rrect(d, (bx - bw // 2, ycen - bh // 2, bx + bw // 2, ycen + bh // 2), 10 * S, ef, eo)
+    _text_centered(d, bx, ycen, bw - 14 * S, btext, FONT, DARK)
+
+
+def _legend(d, x0, y0, font, nodes):
+    kinds = set(nd["kind"] for nd in nodes)
+    if any(nd.get("branch") for nd in nodes):
+        kinds.add("exit")
+    items = []
+    if kinds & {"start", "end"}:
+        items.append(("Start / End", COL["start"]))
+    if "process" in kinds:
+        items.append(("Process step", COL["process"]))
+    if kinds & {"validate", "decision"}:
+        items.append(("Validation (re-prompts)", COL["validate"]))
+    if "exit" in kinds:
+        items.append(("Error exit", COL["exit"]))
+    x = x0
+    sw, sh = 26 * S, 17 * S
+    for label, (fill, outline) in items:
+        rrect(d, (x, y0, x + sw, y0 + sh), 4 * S, fill, outline, width=1)
+        d.text((x + sw + 7 * S, y0 + 1 * S), label, fill=(80, 80, 80), font=font)
+        x += sw + 12 * S + d.textlength(label, font=font) + 26 * S
+
+
+def render_flow(nodes, path, cols=1):
+    NW, NH, VGAP, M, LEG = 300 * S, 60 * S, 42 * S, 24 * S, 58 * S
     n = len(nodes)
-    canvas_h = top + n * NH + (n - 1) * VGAP + bottom
+    if cols == 2:
+        half = (n + 1) // 2
+        groups = [list(range(half)), list(range(half, n))]
+        left_pad, right_pad, gap = 100 * S, 58 * S, 96 * S
+    else:
+        groups = [list(range(n))]
+        left_pad, right_pad, gap = 30 * S, 70 * S, 0
+    rows = max(len(g) for g in groups)
+
+    col_cx = [M + left_pad + NW // 2 + c * (NW + gap) for c in range(cols)]
+    canvas_w = M + left_pad + cols * NW + (cols - 1) * gap + right_pad + M
+    canvas_h = LEG + M + rows * NH + (rows - 1) * VGAP + M
     img = Image.new("RGB", (canvas_w, canvas_h), "white")
     d = ImageDraw.Draw(img)
 
-    centers, y = [], top
-    for _ in nodes:
-        centers.append((cx, y + NH // 2)); y += NH + VGAP
+    _legend(d, M, 16 * S, FONT_SM, nodes)
 
-    for i in range(n - 1):
-        x0, y0 = centers[i]; x1, y1 = centers[i + 1]
-        arrow(d, x0, y0 + NH // 2, x1, y1 - NH // 2)
+    pos, y0 = {}, LEG + M
+    for c, g in enumerate(groups):
+        y = y0
+        for gi in g:
+            pos[gi] = (col_cx[c], y + NH // 2); y += NH + VGAP
 
-    for i, nd in enumerate(nodes):
-        fill, outline = COL[nd["kind"]]
-        x, ycen = centers[i]
-        box = (x - NW // 2, ycen - NH // 2, x + NW // 2, ycen + NH // 2)
-        radius = NH // 2 if nd["kind"] in ("start", "end") else 12 * S
-        rrect(d, box, radius, fill, outline)
-        lines = wrap(d, nd["text"], FONT, NW - 24 * S)
-        lh = (FONT.getbbox("Ag")[3] - FONT.getbbox("Ag")[1]) + 4 * S
-        ty = ycen - (len(lines) * lh) // 2
-        for ln in lines:
-            tw = d.textlength(ln, font=FONT)
-            d.text((x - tw / 2, ty), ln, fill=DARK, font=FONT); ty += lh
+    for g in groups:                                   # in-column arrows
+        for k in range(len(g) - 1):
+            x0, ya = pos[g[k]]; x1, yb = pos[g[k + 1]]
+            arrow(d, x0, ya + NH // 2, x1, yb - NH // 2)
 
-        if nd.get("loop"):
-            rx = x + NW // 2; out = rx + 46 * S
-            d.line((rx, ycen, out, ycen), fill=(150, 120, 40), width=2 * S)
-            d.line((out, ycen, out, ycen - NH // 2 - 14 * S), fill=(150, 120, 40), width=2 * S)
-            arrow(d, out, ycen - NH // 2 - 14 * S, x + NW // 4, ycen - NH // 2)
-            ly = ycen - 6 * S
-            for ln in wrap(d, nd["loop"], FONT_SM, 150 * S):
-                d.text((out + 6 * S, ly), ln, fill=(120, 95, 30), font=FONT_SM); ly += 13 * S
+    if cols == 2 and groups[1]:                        # column-to-column connector
+        xa, ya = pos[groups[0][-1]]; xb, yb = pos[groups[1][0]]
+        ch = (col_cx[0] + NW // 2 + col_cx[1] - NW // 2) // 2
+        ab, bt = ya + NH // 2, yb - NH // 2
+        d.line((xa, ab, xa, ab + 20 * S), fill=(80, 80, 80), width=2 * S)
+        d.line((xa, ab + 20 * S, ch, ab + 20 * S), fill=(80, 80, 80), width=2 * S)
+        d.line((ch, ab + 20 * S, ch, bt - 20 * S), fill=(80, 80, 80), width=2 * S)
+        d.line((ch, bt - 20 * S, xb, bt - 20 * S), fill=(80, 80, 80), width=2 * S)
+        arrow(d, xb, bt - 20 * S, xb, bt)
 
-        if nd.get("branch"):
-            label, btext = nd["branch"]
-            bx = x + NW // 2 + 70 * S; bw, bh = 150 * S, 50 * S
-            arrow(d, x + NW // 2, ycen, bx - bw // 2, ycen)
-            d.text((x + NW // 2 + 6 * S, ycen - 26 * S), label, fill=(120, 95, 80), font=FONT_SM)
-            ef, eo = COL["exit"]
-            rrect(d, (bx - bw // 2, ycen - bh // 2, bx + bw // 2, ycen + bh // 2), 12 * S, ef, eo)
-            elines = wrap(d, btext, FONT, bw - 20 * S)
-            elh = (FONT.getbbox("Ag")[3] - FONT.getbbox("Ag")[1]) + 4 * S
-            ety = ycen - (len(elines) * elh) // 2
-            for ln in elines:
-                tw = d.textlength(ln, font=FONT)
-                d.text((bx - tw / 2, ety), ln, fill=DARK, font=FONT); ety += elh
+    for c, g in enumerate(groups):
+        side = "left" if (cols == 2 and c == 0) else "right"
+        for gi in g:
+            nd = nodes[gi]; x, ycen = pos[gi]
+            fill, outline = COL[nd["kind"]]
+            radius = NH // 2 if nd["kind"] in ("start", "end") else 12 * S
+            rrect(d, (x - NW // 2, ycen - NH // 2, x + NW // 2, ycen + NH // 2),
+                  radius, fill, outline)
+            _text_centered(d, x, ycen, NW - 62 * S, nd["text"], FONT, DARK)
+            _badge(d, x - NW // 2, ycen - NH // 2, gi + 1)
+            if nd.get("loop"):
+                _loop(d, x, ycen, NW, NH, side)
+            if nd.get("branch"):
+                _branch(d, nd["branch"], x, ycen, NW, NH, side)
 
     img.save(path, "PNG")
     return path
@@ -142,7 +212,7 @@ def render_flow(nodes, path):
 CUSTOMER = [
     {"text": "Launch app", "kind": "start"},
     {"text": "Load 3 menu files - all valid?", "kind": "decision",
-     "branch": ("missing / malformed", "Show error & exit gracefully")},
+     "branch": ("files invalid", "Exit")},
     {"text": "Start session + log timestamp", "kind": "process"},
     {"text": "Collect & validate name (alpha+space, 2-40)", "kind": "validate",
      "loop": "invalid -> re-prompt"},
@@ -169,7 +239,7 @@ ADMIN = [
     {"text": "Logout", "kind": "process"},
     {"text": "Return to login", "kind": "end"},
 ]
-cust_png = render_flow(CUSTOMER, "M:/mouli-projects/pizzaflow/_flow_customer.png")
+cust_png = render_flow(CUSTOMER, "M:/mouli-projects/pizzaflow/_flow_customer.png", cols=2)
 admin_png = render_flow(ADMIN, "M:/mouli-projects/pizzaflow/_flow_admin.png")
 DIAGRAMS = [(cust_png, "Figure 4.1 - Customer Ordering Flow (MVP)"),
             (admin_png, "Figure 4.2 - Admin Flow (Stage 3 scope)")]
@@ -343,17 +413,20 @@ def table_block(rows):
 
 
 def place_diagram(png, caption):
-    pdf.add_page()
-    pdf.set_font(FAMILY, "B", 11); pdf.set_text_color(*DARK)
-    pdf.multi_cell(0, 6, clean(caption), align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(2)
     iw, ih = Image.open(png).size
-    ratio = min(CW / iw, 225 / ih)
+    page_bottom = 297 - 18
+    avail = page_bottom - pdf.get_y() - 9          # leave room for the caption
+    if avail < 125:                                # not enough room -> new page
+        pdf.add_page()
+        avail = page_bottom - pdf.get_y() - 9
+    pdf.set_font(FAMILY, "BI", 9.5); pdf.set_text_color(*GREY)
+    pdf.multi_cell(0, 5, clean(caption), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+    ratio = min(CW / iw, (avail - 6) / ih)
     w, h = iw * ratio, ih * ratio
     top_y = pdf.get_y()
     pdf.image(png, x=(210 - w) / 2, y=top_y, w=w, h=h)
-    pdf.set_y(top_y + h + 4)
-    pdf.add_page()
+    pdf.set_y(top_y + h + 5)
 
 
 def render_markdown(path, diagram_queue):
