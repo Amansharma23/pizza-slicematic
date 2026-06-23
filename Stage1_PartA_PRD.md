@@ -161,41 +161,48 @@ branch. (Rendered as a Mermaid flowchart — displays in Notion / GitHub / most 
 
 ```mermaid
 flowchart TD
-    A([Launch app]) --> B[Load 3 menu files]
-    B -->|File missing/malformed| BX[Show error & exit gracefully]
-    B -->|Files OK| C[Start session + log timestamp]
+    A([Launch app]) --> B["Load 3 menu files"]
+    B -->|File missing or malformed| BX["Show error and exit gracefully"]
+    B -->|Files OK| C["Start session and log timestamp"]
 
-    C --> D[Prompt: Customer name]
-    D --> D1{Valid name?\nalpha+space, 2-40}
-    D1 -->|No| DE[Show specific error] --> D
-    D1 -->|Yes| E[Prompt: Phone number]
+    C --> D["Prompt: Customer name"]
+    D --> D1{"Valid name? alpha and space, 2 to 40 chars"}
+    D1 -->|No| DE["Show specific error"]
+    DE --> D
+    D1 -->|Yes| E["Prompt: Phone number"]
 
-    E --> E1{Valid phone?\n10 digits, starts 6/7/8/9}
-    E1 -->|No| EE[Show specific error] --> E
-    E1 -->|Yes| F[Show Base menu]
+    E --> E1{"Valid phone? 10 digits, starts 6/7/8/9"}
+    E1 -->|No| EE["Show specific error"]
+    EE --> E
+    E1 -->|Yes| F["Show Base menu"]
 
-    F --> F1{Valid base number?}
-    F1 -->|No| FE[Show error] --> F
-    F1 -->|Yes| G[Show Pizza menu]
+    F --> F1{"Valid base number?"}
+    F1 -->|No| FE["Show error"]
+    FE --> F
+    F1 -->|Yes| G["Show Pizza menu"]
 
-    G --> G1{Valid pizza number?}
-    G1 -->|No| GE[Show error] --> G
-    G1 -->|Yes| H[Show Topping menu]
+    G --> G1{"Valid pizza number?"}
+    G1 -->|No| GE["Show error"]
+    GE --> G
+    G1 -->|Yes| H["Show Topping menu"]
 
-    H --> H1{Valid topping number?}
-    H1 -->|No| HE[Show error] --> H
-    H1 -->|Yes| I[Prompt: Quantity]
+    H --> H1{"Valid topping number?"}
+    H1 -->|No| HE["Show error"]
+    HE --> H
+    H1 -->|Yes| I["Prompt: Quantity"]
 
-    I --> I1{Valid qty?\ninteger 1-10}
-    I1 -->|No| IE[Show specific error] --> I
-    I1 -->|Yes| J[Compute bill:\nunit price, subtotal,\ndiscount if qty>=5,\nGST 18%, total]
+    I --> I1{"Valid qty? integer 1 to 10"}
+    I1 -->|No| IE["Show specific error"]
+    IE --> I
+    I1 -->|Yes| J["Compute bill: unit price, subtotal,<br/>discount if qty 5 or more, GST 18%, total"]
 
-    J --> K[Display itemised bill table]
-    K --> L[Prompt: Payment mode\n1 Cash / 2 Card / 3 UPI]
-    L --> L1{Valid payment?}
-    L1 -->|No| LE[Show error] --> L
-    L1 -->|Yes| M[Show payment confirmation]
-    M --> N[Append order to orders_log.txt]
+    J --> K["Display itemised bill table"]
+    K --> L["Prompt: Payment mode<br/>1 Cash / 2 Card / 3 UPI"]
+    L --> L1{"Valid payment?"}
+    L1 -->|No| LE["Show error"]
+    LE --> L
+    L1 -->|Yes| M["Show payment confirmation"]
+    M --> N["Append order to orders_log.txt"]
     N --> O([Order confirmed])
 ```
 
