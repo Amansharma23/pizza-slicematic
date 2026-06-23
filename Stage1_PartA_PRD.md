@@ -8,33 +8,22 @@
 
 ---
 
-## 0. Purpose of this Document
-
-This PRD defines *what* the SliceMatic ordering system must do, precisely enough that an
-engineer who has never spoken to the client can build it correctly. It is the single source
-of truth for the build. Section 8 ("Open Questions") lists decisions we need the client to
-confirm before development — please review that section first, as those answers may change
-parts of this spec.
-
----
-
 ## 1. Product Vision
 
 SliceMatic's ordering system replaces error-prone manual phone ordering with a guided digital
 flow that validates customer details, builds an itemised bill (pricing, quantity discounts,
-18% GST and payment), and persists every order in a structured, analysable format. It serves
-two users at once: the **customer**, who gets a fast, consistent, transparent ordering
-experience, and the **outlet owner**, who gets operational consistency (no manual pricing or
+18% GST and payment), and persists every order in a structured, analysable format. 
+It solves two problems at once: 
+1. The **customer**, who gets a fast, consistent, transparent ordering experience
+2. The **outlet owner**, who gets operational consistency (no manual pricing or
 GST errors, no staff tied to a phone line) plus the order-level data needed to run the unit
-economics of the business. In one line: it turns every phone call into a clean, priced,
-recorded transaction.
+economics of the business. 
 
 ---
 
 ## 2. Functional Requirements
 
-Each requirement has an ID, a description, and acceptance criteria (AC). "The system" refers
-to the ordering application.
+Each requirement has an ID, a description, and acceptance criteria (AC).
 
 ### FR-1 — Customer Onboarding
 - **FR-1.1 Name capture.** Collect the customer's name.
@@ -135,8 +124,7 @@ Pipe-separated, one order per block, blank line between blocks. Proposed field o
 ```
 timestamp | name | phone | base | pizza | topping | unit_price | quantity | subtotal | discount | gst | total | payment_mode
 ```
-Format must remain stable so downstream analysis (Stage 1 Part B metrics, Stage 3 dashboard)
-can parse it reliably.
+Format must remain stable so downstream analysis can parse it reliably.
 
 ### NFR-5 — Graceful Failure Modes
 - Missing or malformed menu file → clear error message, graceful exit (no stack trace to user).
@@ -154,7 +142,13 @@ visible in INR. Re-prompts keep the customer in context rather than restarting t
 
 ---
 
-## 4. User Flow Diagram
+## 4. User Flow Diagrams
+
+Two flows are documented. **4.1 — the Customer Ordering Flow** is the core journey delivered in
+the MVP (Stage 2). **4.2 — the Admin Flow** is a Stage 3 capability, shown here for completeness
+so the full system is understood end to end; it is **out of scope for the Stage 2 MVP**.
+
+### 4.1 Customer Ordering Flow
 
 End-to-end journey from launch to order confirmation, including every decision node and error
 branch. (Rendered as a Mermaid flowchart — displays in Notion / GitHub / most Markdown viewers.)
@@ -206,6 +200,36 @@ flowchart TD
     N --> O([Order confirmed])
 ```
 
+### 4.2 Admin Flow *(Stage 3 scope — not in the MVP)*
+
+The owner/admin journey: authenticated login, then a dashboard built on the persisted order data
+(filters, revenue and sales summaries, CSV export). Backed by Supabase Auth and the orders
+database in the full-stack build.
+
+```mermaid
+flowchart TD
+    AA([Open admin portal]) --> AB["Show login page"]
+    AB --> AC["Enter email and password"]
+    AC --> AD{"Valid credentials? Supabase Auth"}
+    AD -->|No| AE["Show login error"]
+    AE --> AB
+    AD -->|Yes| AF["Load admin dashboard"]
+
+    AF --> AG["Fetch all orders from database"]
+    AG --> AH["Show orders list and summary metrics"]
+    AH --> AI["Total revenue, top-selling pizza, busiest hour"]
+
+    AH --> AJ{"Admin action?"}
+    AJ -->|Filter by date| AK["Apply date filter"]
+    AK --> AH
+    AJ -->|Filter by payment mode| AL["Apply payment-mode filter"]
+    AL --> AH
+    AJ -->|Export CSV| AM["Generate and download orders CSV"]
+    AM --> AH
+    AJ -->|Logout| AN["End admin session"]
+    AN --> AO([Return to login])
+```
+
 ---
 
 ## 5. Drawbacks Analysis
@@ -216,22 +240,18 @@ An honest assessment of the system **as specified** — not just its strengths.
 - **Flat-file storage does not scale.** `orders_log.txt` is appended sequentially. At ~1,000+
   orders the file becomes slow to read, has no indexing, no querying, and no concurrency
   control — two simultaneous orders could interleave or corrupt a line. This is acceptable for
-  an MVP but is the first thing that breaks at volume. *(Addressed in Stage 3 via a database.)*
+  an MVP but is the first thing that breaks at volume.
 - **Single-session, single-user.** The MVP assumes one order at a time. Real delivery demand is
   concurrent (peak-hour bursts); the spec has no concurrency model.
 - **No persistence of menu/version.** If the menu file changes between orders, past orders in
   the log have no record of which menu/price version was in effect.
 
 ### 5.2 Functional gaps for a real ordering business
-- **No delivery address captured.** A delivery business cannot deliver without an address; the
-  spec only collects name + phone. *(See Q1.)*
 - **Single-configuration orders.** The spec models one Base+Pizza+Topping × quantity. A customer
-  who wants two *different* pizzas in one order cannot be served — no true cart. *(See Q2.)*
+  who wants two *different* pizzas in one order cannot be served — no true cart.
 - **No real payment processing.** Payment is a selection + confirmation only; no money actually
   moves for Card/UPI. Fine for an MVP, not for production.
 - **No order tracking, cancellation, or modification** after confirmation.
-- **No customer accounts / order history** at the MVP stage (added only in Stage 3 for the AI
-  feature).
 - **No inventory or stock-out handling.** The system will happily sell a pizza whose ingredients
   are unavailable.
 
@@ -240,12 +260,6 @@ An honest assessment of the system **as specified** — not just its strengths.
 - No deduplication or order IDs → hard to reference a specific order.
 - Concurrent writes risk corrupting the log.
 - No backups → a single file loss wipes all business data.
-
-### 5.4 Missing for production deployment
-Authentication, a database with proper schema and indexes, real payment gateway integration,
-delivery address + geocoding + rider assignment, order status lifecycle, monitoring/alerting,
-data backup, GST-compliant invoice numbering, and an admin view. *(Most are deliberately
-deferred to Stage 3.)*
 
 ---
 
@@ -289,13 +303,11 @@ business currently has none of. High value-to-effort ratio for the MVP.
 ## 7. Assumptions
 
 1. One order = one Base + one Pizza + one Topping, multiplied by quantity (per the client's
-   reference bill). *Pending confirmation — Q2, Q3.*
+   reference bill). 
 2. The 10% discount applies to the pre-tax subtotal when quantity ≥ 5; GST is then charged on
    the post-discount amount.
 3. GST is a flat 18% on home delivery, added at billing, excluded from the P&L (pass-through).
 4. Prices in menu files are GST-exclusive.
-5. No delivery fee is charged to the customer (delivery cost is absorbed as a business cost per
-   the reference model). *Pending confirmation — Q5.*
 6. Currency is INR throughout; values rounded to 2 decimals.
 
 ---
@@ -310,23 +322,18 @@ before development starts; defaults we will assume (if no answer) are noted.
 | **Q1** | Should we capture a **delivery address** (and is delivery in scope for this version)? | A delivery business can't deliver without one; impacts data model and flow. | Out of scope for MVP; name + phone only. |
 | **Q2** | Can one order contain **multiple different pizzas** (a true cart), or is it one configuration × quantity? | Changes the entire order/data model and bill structure. | One configuration × quantity (matches reference bill). |
 | **Q3** | Is a topping **mandatory**, and can a customer pick **more than one** topping (or none)? | Reference model says "avg 1 topping"; the brief lists "Topping" singular. Affects pricing and selection step. | Exactly one mandatory topping per pizza. |
-| **Q4** | Is there a **delivery fee or packaging charge** added to the customer's bill? | Reference model treats these as business costs, not customer charges. Affects bill lines. | No customer-facing delivery/packaging fee. |
-| **Q5** | For **Card/UPI**, do we need real payment processing now, or is selection + confirmation sufficient for this version? | Real gateways need integration, keys, reconciliation. | Selection + confirmation only (no live payment) for MVP. |
-| **Q6** | Should the **discount be configurable** (threshold/percentage) or hard-fixed at qty ≥ 5 / 10%? | Owner may want to run promotions; graders also test changing the threshold. | Keep the rule in one place so it can be changed easily; default qty ≥ 5 / 10%. |
-| **Q7** | Any **minimum order value** or free-delivery threshold? | Common QSR rule; affects checkout validation. | No minimum order value. |
-| **Q8** | Should each order get a **human-readable order ID / invoice number**? | Needed to reference orders and for GST-compliant invoicing later. | Use timestamp as the identifier for MVP. |
-| **Q9** | Confirm **GST rate (18%)** and that prices in the menu files are **GST-exclusive**. | If prices are GST-inclusive, the entire bill math changes. | 18%, prices GST-exclusive. |
-| **Q10** | What should happen to a **partially completed order** the customer abandons before payment? | Affects whether/how incomplete sessions are logged. | Not written to `orders_log.txt`; only completed orders are persisted. |
+| **Q4** | For **Card/UPI**, do we need real payment processing now, or is selection + confirmation sufficient for this version? | Real gateways need integration, keys, reconciliation. | Selection + confirmation only (no live payment) for MVP. |
+| **Q5** | Should the **discount be configurable** (threshold/percentage) or hard-fixed at qty ≥ 5 / 10%? | Owner may want to run promotions; graders also test changing the threshold. | Keep the rule in one place so it can be changed easily; default qty ≥ 5 / 10%. |
+| **Q6** | What should happen to a **partially completed order** the customer abandons before payment? | Affects whether/how incomplete sessions are logged. | Not written to `orders_log.txt`; only completed orders are persisted. |
 
 ---
 
 ## 9. Out of Scope (this version)
 
-Aggregator (Zomato/Swiggy) integration, loyalty/coupon codes beyond the qty discount,
-multi-outlet support, live order tracking, inventory management, refunds/cancellations, and
-SMS/email notifications. These may be considered in future phases.
-
----
-
-*Prepared as Stage 1, Part A. Part B (Business Unit Economics) follows as a companion section in
-the same submission.*
+1. Aggregator (Zomato/Swiggy) integration
+2. Loyalty/coupon codes beyond the qty discount
+3. Multi-outlet support
+4. Live order tracking
+5. Inventory management
+6. Refunds/cancellations
+7. SMS/email notifications
