@@ -372,5 +372,5 @@ leg = ws.cell(row=INVEST + 4, column=1, value="Yellow = editable input")
 leg.fill = INPUT_FILL
 ws.cell(row=INVEST + 5, column=1, value="Green = key result   |   Blue = computed").fill = CALC_FILL
 
-wb.save("M:/mouli-projects/pizzaflow/SliceMatic_Calculator.xlsx")
+wb.save("M:/mouli-projects/pizzaflow/calculator/SliceMatic_Calculator.xlsx")
 print("Workbook written: SliceMatic_Calculator.xlsx")

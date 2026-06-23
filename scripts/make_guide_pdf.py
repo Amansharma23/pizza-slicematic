@@ -281,5 +281,5 @@ code([
 para("Read top to bottom, that is the entire story of the business - and that path IS the P&L. The whole reference document is essentially proving 'this shop makes money and pays itself back in 18 months', using these terms as the proof.")
 para("Tip for the assignment: Section 9 ('Challenge These Numbers') is where you are actually graded. It asks you to recalculate break-even under new conditions (higher rent, Swiggy commissions, ingredient inflation). Every one of those is just a re-application of the concepts above.")
 
-pdf.output("M:/mouli-projects/pizzaflow/SliceMatic_Business_Economics_Explained.pdf")
+pdf.output("M:/mouli-projects/pizzaflow/reference/SliceMatic_Business_Economics_Explained.pdf")
 print("PDF written.")

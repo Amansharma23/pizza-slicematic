@@ -155,22 +155,7 @@ this for refinement.
 
 ---
 
-## 6. Delivery Radius Economics
-
-| Radius | Households served | Avg delivery time | Trips/day/rider | Viable? |
-|---|---|---|---|---|
-| 0–2 km | ~18,000 | 8–12 min | 55–60 | Yes — premium SLA |
-| 2–4 km | ~55,000 | 15–22 min | 30–35 | **Yes — sweet spot** |
-| 4–6 km | ~1,10,000 | 25–40 min | 18–22 | Marginal — needs 3rd rider |
-| > 6 km | diminishing | 40+ min | 12–15 | Not viable at launch |
-
-**Recommendation:** Launch at **4 km** — large addressable market without breaching the 30-min
-SLA. With 2 riders at 30–35 trips each, delivery capacity ≈ 60–70 orders/day, comfortably above
-the 47/day plan. Expand to 5 km once a 3rd rider is added (~₹16,000/mo fixed; see Q3).
-
----
-
-## 7. GST Treatment — How 18% Flows Through the P&L
+## 6. GST Treatment — How 18% Flows Through the P&L
 
 Home delivery of restaurant food attracts **18% GST** (no composition scheme). SliceMatic is
 GST-registered.
@@ -202,7 +187,7 @@ GST-registered.
 
 ---
 
-## 8. Stress Tests — "Challenge These Numbers"
+## 7. Stress Tests — "Challenge These Numbers"
 
 The six scenarios the model must answer. Each shows the method so the result can be reproduced.
 
@@ -295,22 +280,3 @@ again a function of the high contribution margin. (Applying 12% to *all* COGS co
 3. **Item-level contribution-margin ranking.** Top *sellers* vs most *profitable* items — promote
    high-margin lines, reprice/retire low-margin ones (e.g. the Cheese Burst margin drag),
    improving blended margin without touching volume.
-
-*Bonus metric:* **discount-effectiveness** (order-size distribution around the qty≥5 threshold) to
-tune the discount per Q4; and **repeat-customer rate** for retention targeting.
-
----
-
-## 9. Summary of Refinements / Challenges to the Baseline
-
-| # | Baseline | Our refinement | Rationale |
-|---|---|---|---|
-| 1 | Ingredient COGS flat at ₹148/order | Scale ingredients + packaging by pizza count; keep delivery & gateway per-order | AOV ₹847 implies >1 pizza/order; flat food cost understates multi-pizza orders |
-| 2 | Gateway fee 1.8% on all orders | Apply only to Card/UPI share (Cash pays no gateway) | Cash orders incur no gateway fee → effective rate < 1.8% |
-| 3 | Rent framed as a key risk | Rent is low-risk (robust to ~13× increase); **demand volume** is the real risk | Driven by the 76% contribution margin |
-| 4 | Flat 10% qty≥5 discount | Make threshold/percentage configurable + monitored | It is margin-accretive only when it shifts order size (Q4) |
-
----
-
-*Prepared as Stage 1, Part B. To be merged with Part A (PRD) into a single submission PDF after
-review.*
