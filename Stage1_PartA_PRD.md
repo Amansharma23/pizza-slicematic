@@ -281,6 +281,10 @@ An honest assessment of the system **as specified** — not just its strengths.
 *(Indicative full-stack Stage 3 effort is materially larger — frontend, database, auth,
 dashboard, AI feature — and is scoped separately.)*
 
+> **Note — Admin dashboard:** the admin flow (see 4.2) is a **Stage 3** capability and is **not**
+> included in the ~21–28 hr MVP estimate above. Its effort (Supabase Auth, dashboard metrics,
+> date/payment filters, CSV export) is part of the separately-scoped full-stack build.
+
 ### 6.2 Measurable value to the outlet
 - **Operational efficiency:** removes manual price/discount/GST math (eliminates billing
   errors); frees the counter/billing staff from being tied to a phone line; consistent bills
@@ -337,3 +341,4 @@ before development starts; defaults we will assume (if no answer) are noted.
 5. Inventory management
 6. Refunds/cancellations
 7. SMS/email notifications
+8. Admin dashboard — login, order filters, revenue/sales summaries, CSV export *(deferred to Stage 3; see flow 4.2)*
