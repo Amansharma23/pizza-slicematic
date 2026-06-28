@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from core import menu as menu_mod
 from core import validation as v
-from core import pricing, persistence
+from core import pricing, persistence, analytics
 from core.menu import MenuError
 
 MENU_DIR = os.environ.get("MENU_DIR", "menu_data")
@@ -90,6 +90,10 @@ class OrderReq(CustomerReq, SummaryReq):
     payment_mode: str = ""
 
 
+class ConfigReq(BaseModel):
+    discount_rate: float
+
+
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
@@ -159,4 +163,33 @@ def place_order(req: OrderReq):
         "payment_mode": mode,
         "name": name,
         "bill": _bill_dict(bill),
+    }
+
+
+@router.get("/config")
+def get_config():
+    return {"discount_rate": pricing.get_discount_rate()}
+
+
+@router.post("/config")
+def update_config(req: ConfigReq):
+    pricing.set_discount_rate(req.discount_rate)
+    return {"ok": True, "discount_rate": pricing.get_discount_rate()}
+
+
+@router.get("/analytics")
+def get_analytics(filter_type: str = "All Time"):
+    data = analytics.get_analytics(filter_type)
+    # Convert pandas DataFrames to dicts for JSON serialization
+    return {
+        "total_orders": data["total_orders"],
+        "total_qty": data["total_qty"],
+        "revenue": data["revenue"],
+        "gst": data["gst"],
+        "discount": data["discount"],
+        "top_bases": data["top_bases"].to_dict(orient="records"),
+        "top_pizzas": data["top_pizzas"].to_dict(orient="records"),
+        "top_toppings": data["top_toppings"].to_dict(orient="records"),
+        "top_combos": data["top_combos"].to_dict(orient="records"),
+        "orders_df": data["orders_df"].to_dict(orient="records"),
     }
