@@ -11,7 +11,7 @@ _pg*.png
 .gradio/
 *.db
 .pytest_cache/
-node_modules/
+node_modules
 scripts/
 .venv
-.pytest_cache
+.pytest_cache\
