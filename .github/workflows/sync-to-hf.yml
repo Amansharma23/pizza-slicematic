@@ -34,5 +34,5 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add huggingface https://moulsai2296:$HF_TOKEN@huggingface.co/spaces/moulisai2296/pizzaflow_v2
+          git remote add huggingface https://moulsai2296:$HF_TOKEN@huggingface.co/spaces/moulsai2296/pizzaflow_v2
           git push --force huggingface master:main
