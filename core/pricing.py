@@ -15,6 +15,7 @@ from __future__ import annotations
 from core.models import MenuItem, Bill
 
 DISCOUNT_THRESHOLD = 5      # quantity at or above which the discount applies
+_discount_threshold = 5
 _discount_rate = 0.10       # 10%
 GST_RATE = 0.18             # 18%
 
@@ -26,6 +27,13 @@ def get_discount_rate() -> float:
 def set_discount_rate(rate: float):
     global _discount_rate
     _discount_rate = float(rate)
+
+def get_discount_threshold() -> int:
+    return _discount_threshold
+
+def set_discount_threshold(discount: int):
+    global _discount_threshold
+    _discount_threshold = int(discount)
 
 
 def _money(value: float) -> float:
@@ -41,7 +49,7 @@ def compute_bill(
     """Compute the itemised bill for one configuration × quantity."""
     unit_price = _money(base.price + pizza.price + topping.price)
     subtotal = _money(unit_price * quantity)
-    discount = _money(get_discount_rate() * subtotal) if quantity >= DISCOUNT_THRESHOLD else 0.0
+    discount = _money(get_discount_rate() * subtotal) if quantity >= get_discount_threshold() else 0.0
     taxable = _money(subtotal - discount)
     gst = _money(GST_RATE * taxable)
     total = _money(taxable + gst)
