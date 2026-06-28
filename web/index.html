@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SliceMatic — Order</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="hero">
+      <div class="hero-brand">
+        <span class="logo">◍</span>
+        <div>
+          <h1>SliceMatic</h1>
+          <p>Fresh, fast, fairly priced — order in a few quick steps.</p>
+        </div>
+      </div>
+      <div class="hero-badge">New Ashok Nagar · Delhi</div>
+    </header>
+
+    <!-- Stepper -->
+    <nav class="stepper" id="stepper">
+      <div class="step" data-step="1"><span class="dot">1</span> Details</div>
+      <div class="step" data-step="2"><span class="dot">2</span> Build</div>
+      <div class="step" data-step="3"><span class="dot">3</span> Pay</div>
+      <div class="step" data-step="4"><span class="dot">✓</span> Done</div>
+    </nav>
+
+    <main class="card">
+      <!-- STEP 1 — Details -->
+      <section class="screen" data-screen="1">
+        <h2>Fill customer details</h2>
+        <p class="muted">We'll use these for your order confirmation.</p>
+        <div class="field">
+          <label for="name">Name</label>
+          <input id="name" type="text" placeholder="e.g. Rajan Sharma" autocomplete="off" />
+          <small class="err" data-err="name"></small>
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input id="phone" type="text" inputmode="numeric" placeholder="10 digits, starts with 6/7/8/9" autocomplete="off" />
+          <small class="err" data-err="phone"></small>
+        </div>
+        <div class="actions">
+          <span></span>
+          <button class="btn primary" id="toBuild">Continue →</button>
+        </div>
+      </section>
+
+      <!-- STEP 2 — Build -->
+      <section class="screen" data-screen="2" hidden>
+        <h2>Build your pizza</h2>
+        <p class="muted">Pick one from each — tap to select.</p>
+
+        <div class="builder">
+          <div class="cat">
+            <div class="cat-title">Base</div>
+            <div class="options" id="bases"></div>
+          </div>
+          <div class="cat">
+            <div class="cat-title">Pizza</div>
+            <div class="options" id="pizzas"></div>
+          </div>
+          <div class="cat">
+            <div class="cat-title">Topping</div>
+            <div class="options" id="toppings"></div>
+          </div>
+        </div>
+
+        <div class="qty-row">
+          <label>Quantity</label>
+          <div class="stepper-qty">
+            <button class="qbtn" id="qtyMinus" aria-label="decrease">−</button>
+            <span id="qtyVal">1</span>
+            <button class="qbtn" id="qtyPlus" aria-label="increase">+</button>
+          </div>
+          <small class="qty-hint muted">1–10 · 10% off at 5+</small>
+        </div>
+        <small class="err" data-err="build"></small>
+
+        <!-- Live bill -->
+        <div class="bill" id="bill" hidden></div>
+
+        <div class="actions">
+          <button class="btn ghost" data-back="1">← Back</button>
+          <button class="btn primary" id="toPay" disabled>Proceed to payment →</button>
+        </div>
+      </section>
+
+      <!-- STEP 3 — Pay -->
+      <section class="screen" data-screen="3" hidden>
+        <h2>Payment</h2>
+        <p class="muted">Choose how you'd like to pay.</p>
+        <div class="pay-options" id="payOptions">
+          <button class="pay-opt" data-mode="Cash"><span>💵</span> Cash</button>
+          <button class="pay-opt" data-mode="Card"><span>💳</span> Card</button>
+          <button class="pay-opt selected" data-mode="UPI"><span>📱</span> UPI</button>
+        </div>
+        <div class="bill" id="billPay"></div>
+        <small class="err" data-err="pay"></small>
+        <div class="actions">
+          <button class="btn ghost" data-back="2">← Back</button>
+          <button class="btn primary" id="placeOrder">Pay & confirm</button>
+        </div>
+      </section>
+
+      <!-- STEP 4 — Done -->
+      <section class="screen" data-screen="4" hidden>
+        <div class="done">
+          <div class="done-check">✓</div>
+          <h2>Order confirmed</h2>
+          <div class="order-no" id="orderNo"></div>
+          <div class="bill" id="billDone"></div>
+          <p class="muted" id="doneNote"></p>
+          <button class="btn primary" id="newOrder">Place another order</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">SliceMatic · MVP demo · pricing &amp; GST computed server-side</footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

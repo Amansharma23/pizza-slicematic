@@ -1,0 +1,7 @@
+2026-06-27 12:05:11 | Rajan Sharma | 9876543210 | Cheese Burst | BBQ Chicken | Extra Cheese | 677.00 | 5 | 3385.00 | 338.50 | 548.37 | 3594.87 | UPI
+
+2026-06-27 12:18:47 | Aman Verma | 7011223344 | Thin Crust | Margherita | Jalapenos | 487.00 | 2 | 974.00 | 0.00 | 175.32 | 1149.32 | Cash
+
+2026-06-27 13:02:30 | Priya Nair | 8123456789 | Thick Crust | Pepperoni Classic | Extra Cheese | 617.00 | 3 | 1851.00 | 0.00 | 333.18 | 2184.18 | Card
+
+2026-06-27 19:44:05 | Saurabh Sekhar | 9090909090 | Multigrain | Paneer Tikka | Peri-Peri Drizzle | 577.00 | 6 | 3462.00 | 346.20 | 560.84 | 3676.64 | UPI
