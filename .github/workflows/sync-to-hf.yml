@@ -35,4 +35,4 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           pip install -U "huggingface_hub[cli]"
-          huggingface-cli upload moulsai2296/pizzaflow_v2 . . --repo-type space --exclude "*.pdf" --exclude "*.pptx" --exclude ".git/*" --exclude "node_modules/*"
+          hf upload moulsai2296/pizzaflow_v2 . . --repo-type space --exclude "*.pdf" --exclude "*.pptx" --exclude ".git/*" --exclude "node_modules/*" --token $HF_TOKEN
