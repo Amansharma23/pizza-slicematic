@@ -14,7 +14,10 @@ from datetime import datetime
 
 from core.models import Bill
 
-LOG_FILE = "orders_log.txt"
+if os.environ.get("SPACE_ID"):
+    LOG_FILE = "/data/orders_log.txt"
+else:
+    LOG_FILE = "orders_log.txt"
 SEP = " | "
 
 FIELD_ORDER = [

@@ -1,3 +1,12 @@
+---
+title: PizzaFlow
+emoji: 🍕
+colorFrom: green
+colorTo: emerald
+sdk: docker
+app_port: 7860
+---
+
 # SliceMatic — PizzaFlow Applied Project
 
 FDE Academy Programme · PizzaFlow Applied Project · **Group 3**

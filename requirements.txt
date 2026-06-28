@@ -86,7 +86,7 @@ markupsafe==3.0.3
     #   jinja2
 mdurl==0.1.2
     # via markdown-it-py
-numpy==2.5.0
+numpy>=2.0.0
     # via
     #   gradio
     #   pandas
