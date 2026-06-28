@@ -13,8 +13,8 @@ COPY . .
 
 # Ensure the database directory can be written to by creating it and setting permissions
 # (This is useful in containerized environments where SQLite is used)
-RUN mkdir -p /app/pizzaflow.db && chmod -R 777 /app/pizzaflow.db || true
-RUN chmod 777 /app || true
+# RUN mkdir -p /app/pizzaflow.db && chmod -R 777 /app/pizzaflow.db || true
+# RUN chmod 777 /app || true
 
 # Hugging Face Spaces expose port 7860 by default
 ENV PORT=7860
