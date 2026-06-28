@@ -67,3 +67,30 @@ python scripts/make_submission_pdf.py     # rebuilds docs/SliceMatic_Stage1_Subm
 python scripts/make_calculator.py         # rebuilds calculator/SliceMatic_Calculator.xlsx
 python scripts/make_guide_pdf.py          # rebuilds reference/..._Explained.pdf
 ```
+
+## Running the App Locally
+
+The application uses `uv` for lightning-fast dependency management and virtual environments.
+
+1. Install `uv` if you haven't already.
+2. From the repository root, install dependencies and start the Gradio app:
+   ```bash
+   uv run python app.py
+   ```
+3. Open your browser and navigate to `http://127.0.0.1:7861` to view the application.
+
+## CI/CD Pipeline & Deployment
+
+This project uses GitHub Actions for automated testing and deployment to Hugging Face Spaces.
+
+### 1. When a Pull Request is Raised
+When a Pull Request is opened against the `master` branch, the **PR Checks** workflow automatically runs. It spins up an isolated environment, installs all dependencies, and runs the `pytest` suite. 
+- **If tests pass:** The PR is marked green and safe to merge.
+- **If tests fail:** The PR is blocked from being merged until the code is fixed.
+
+### 2. When a Pull Request is Merged
+When code is successfully merged into the `master` branch, the **Sync to Hugging Face Hub** workflow is triggered. 
+- It authenticates securely with Hugging Face.
+- It pushes the latest `master` codebase to the Hugging Face Space using the `hf upload` CLI.
+- Large binary files (like `.pdf` and `.pptx`) are explicitly excluded to prevent deployment rejections.
+- The Hugging Face Space automatically rebuilds the Docker container and goes live!
