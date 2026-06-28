@@ -1,0 +1,21 @@
+2026-06-27 12:05:11 | Rajan Sharma | 9876543210 | Cheese Burst | BBQ Chicken | Extra Cheese | 677.00 | 5 | 3385.00 | 338.50 | 548.37 | 3594.87 | UPI
+
+2026-06-27 12:18:47 | Aman Verma | 7011223344 | Thin Crust | Margherita | Jalapenos | 487.00 | 2 | 974.00 | 0.00 | 175.32 | 1149.32 | Cash
+
+2026-06-27 13:02:30 | Priya Nair | 8123456789 | Thick Crust | Pepperoni Classic | Extra Cheese | 617.00 | 3 | 1851.00 | 0.00 | 333.18 | 2184.18 | Card
+
+2026-06-27 19:44:05 | Saurabh Sekhar | 9090909090 | Multigrain | Paneer Tikka | Peri-Peri Drizzle | 577.00 | 6 | 3462.00 | 346.20 | 560.84 | 3676.64 | UPI
+
+2026-06-28 15:40:16 | mouli | 8790312333 | Cheese Burst | Greek Mediterranean | Button Mushrooms | 607.00 | 10 | 6070.00 | 607.00 | 983.34 | 6446.34 | UPI
+
+2026-06-28 19:52:11 | mouli | 8790312333 | Multigrain | Farm House | Jalapenos | 527.00 | 3 | 1581.00 | 0.00 | 284.58 | 1865.58 | Cash
+
+2026-06-28 19:55:03 | mouli | 8790312333 | Cheese Burst | California Veggie | Green Peppers | 607.00 | 3 | 1821.00 | 0.00 | 327.78 | 2148.78 | UPI
+
+2026-06-28 20:44:32 | mouli | 8790323232 | Thin Crust | Black Olives | Margherita | 497.00 | 10 | 4970.00 | 497.00 | 805.14 | 5278.14 | UPI
+
+2026-06-28 21:13:23 | Mouli | 8790312333 | Whole Wheat | BBQ Chicken | Roasted Garlic | 587.00 | 6 | 3522.00 | 352.20 | 570.56 | 3740.36 | UPI
+
+2026-06-28 21:15:53 | Mouli | 8790312333 | Multigrain | Farm House | Sun-Dried Tomatoes | 547.00 | 7 | 3829.00 | 1531.60 | 413.53 | 2710.93 | UPI
+
+2026-06-28 21:37:20 | Mouli | 8790312333 | Cheese Burst | California Veggie | Jalapenos | 607.00 | 2 | 1214.00 | 0.00 | 218.52 | 1432.52 | UPI

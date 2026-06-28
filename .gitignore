@@ -5,3 +5,13 @@ Thumbs.db
 ~$*
 _flow_*.png
 _pg*.png
+
+# Python / uv
+.venv/
+.gradio/
+*.db
+.pytest_cache/
+node_modules/
+scripts/
+.venv
+.pytest_cache
