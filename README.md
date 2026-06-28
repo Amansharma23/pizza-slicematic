@@ -2,7 +2,7 @@
 title: PizzaFlow
 emoji: 🍕
 colorFrom: green
-colorTo: emerald
+colorTo: purple
 sdk: docker
 app_port: 7860
 ---
