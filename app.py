@@ -384,6 +384,9 @@ def build_demo() -> gr.Blocks:
                                 gr.HTML("<h3>Payment</h3>")
                             pay_mode = gr.Radio(["Cash", "Card", "UPI"], label="Payment mode", value="Cash")
                             
+                            with gr.Group(visible=True) as cash_details:
+                                cash_paid = gr.Number(label="Cash paid by Customer", precision=2)
+                            
                             with gr.Group(visible=False) as card_details:
                                 gr.Markdown("#### Secure Card Payment")
                                 gr.Textbox(label="Card Number", placeholder="0000 0000 0000 0000", max_lines=1)
@@ -624,11 +627,15 @@ def build_demo() -> gr.Blocks:
 
         # --- Screen 5 logic ---
         def toggle_payment_ui(mode):
-            return gr.update(visible=(mode == "Card")), gr.update(visible=(mode == "UPI"))
+            return (
+                gr.update(visible=(mode == "Cash")),
+                gr.update(visible=(mode == "Card")),
+                gr.update(visible=(mode == "UPI")),
+            )
             
-        pay_mode.change(toggle_payment_ui, inputs=[pay_mode], outputs=[card_details, upi_details])
+        pay_mode.change(toggle_payment_ui, inputs=[pay_mode], outputs=[cash_details, card_details, upi_details])
 
-        def pay(mode, order):
+        def pay(mode, cash_paid_value, order):
             ok, mode_v = v.validate_payment(mode)
             if not ok:
                 return (order, gr.update(value=f'<span class="err">{mode_v}</span>'),
@@ -637,6 +644,21 @@ def build_demo() -> gr.Blocks:
             if not bill:
                 return (order, gr.update(value='<span class="err">No bill found — please rebuild your order.</span>'),
                         gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+            cash_return_html = ""
+            if mode_v == "Cash":
+                try:
+                    cash_paid_float = float(cash_paid_value)
+                except (TypeError, ValueError):
+                    return (order, gr.update(value='<span class="err">Please enter the cash paid by customer.</span>'),
+                            gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                if cash_paid_float < bill.total:
+                    return (order, gr.update(value=f'<span class="err">Cash paid must be at least INR {bill.total:.2f}.</span>'),
+                            gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                cash_return = cash_paid_float - bill.total
+                cash_return_html = (
+                    f'<div class="bl"><span>Cash paid by customer</span><span>INR {cash_paid_float:.2f}</span></div>'
+                    f'<div class="bl total"><span>Return amount</span><span>INR {cash_return:.2f}</span></div>'
+                )
             order = dict(order)
             order["status"] = "payment_in_progress"
             ts = persistence.append_order(
@@ -652,13 +674,14 @@ def build_demo() -> gr.Blocks:
                     f'<div style="font-size:24px;font-weight:800;color:#10B981;margin-top:16px">Order confirmed</div>'
                     f'<div style="color:#6B7280;margin:8px 0 20px;font-size:15px">Order no. <b>{order_no}</b></div>'
                     f'<div class="bl"><span>Paying via {mode_v}</span><span style="font-weight:600;color:#111827">INR {bill.total:.2f}</span></div>'
+                    f'{cash_return_html}'
                     f'<div class="bl muted"><span>{note}</span><span></span></div>'
                     f'<div class="bl total" style="justify-content:center;border:none;padding-top:20px;margin-top:10px">'
                     f'<span>Thanks, {order["name"]}! 🍕</span></div></div>')
             return (order, gr.update(value=""), gr.update(value=html, visible=True),
                     gr.update(visible=True), gr.update(visible=False))
 
-        s5_pay.click(pay, [pay_mode, order_state],
+        s5_pay.click(pay, [pay_mode, cash_paid, order_state],
                      [order_state, s5_msg, confirm_box, s5_new, s5_inputs])
 
         bill_placeholder = ('<div class="bill-empty">Your order summary will appear here.</div>')
@@ -667,13 +690,14 @@ def build_demo() -> gr.Blocks:
             return ([{}, gr.update(value=""), gr.update(value="", visible=False),
                      gr.update(visible=False), gr.update(visible=True),
                      gr.update(value=""), gr.update(value=bill_placeholder),
-                     gr.update(value=""), gr.update(value=""), gr.update(value=""), gr.update(value="")]
+                     gr.update(value=""), gr.update(value=""), gr.update(value=""), gr.update(value=""),
+                     gr.update(value=None)]
                     + goto(2))
 
         s5_new.click(
             new_order, None,
             [order_state, s5_msg, confirm_box, s5_new, s5_inputs,
-             s3_msg, bill_box, base_num, pizza_num, topping_num, qty_in, *screens, pills],
+             s3_msg, bill_box, base_num, pizza_num, topping_num, qty_in, cash_paid, *screens, pills],
         )
 
     return demo
