@@ -429,6 +429,11 @@ def build_demo() -> gr.Blocks:
                             
                             with gr.Tab("Discount Settings"):
                                 gr.Markdown("### Global Discount Rate")
+                                threshold_in = gr.Number(
+                                    value=pricing.get_discount_threshold(),
+                                    precision=0,
+                                    label="Discount Threshold"
+                                )
                                 discount_in = gr.Slider(0, 100, value=pricing.get_discount_rate() * 100, step=1, label="Discount % (applied to all orders >= 5 items)")
                                 disc_btn = gr.Button("Save Discount Rate", variant="primary")
                                 disc_msg = gr.HTML("")
@@ -532,11 +537,13 @@ def build_demo() -> gr.Blocks:
                 return gr.update(visible=False), gr.update(visible=True), gr.update(value="")
             return gr.update(visible=True), gr.update(visible=False), gr.update(value='<p class="err">Invalid PIN</p>')
         
-        def update_discount(rate):
+        def update_discount(rate, threshold):
             pricing.set_discount_rate(rate / 100.0)
-            return f"<p style='color:#10B981;font-weight:bold;'>Discount rate updated to {rate}%</p>"
+            pricing.set_discount_threshold(int(threshold))
+
+            return f"<p style='color:#10B981;font-weight:bold;'>Discount updated: {rate}% for orders of {int(threshold)} or more items</p>"
             
-        disc_btn.click(update_discount, discount_in, disc_msg)
+        disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
         
         def refresh_analytics(f_type, f_date):
             data = analytics.get_analytics(f_type, f_date)
