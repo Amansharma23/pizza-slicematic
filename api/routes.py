@@ -185,8 +185,8 @@ def update_config(req: ConfigReq):
 
 
 @router.get("/analytics")
-def get_analytics(filter_type: str = "All Time"):
-    data = analytics.get_analytics(filter_type)
+def get_analytics(filter_type: str = "All Time", start_date: str | None = None, end_date: str | None = None):
+    data = analytics.get_analytics(filter_type, start_date, end_date)
     # Convert pandas DataFrames to dicts for JSON serialization
     return {
         "total_orders": data["total_orders"],
