@@ -54,6 +54,7 @@ def compute_bill(
     unit_price = _money(base.price + pizza.price + topping.price)
     subtotal = _money(unit_price * quantity)
     discount = _money(get_discount_rate() * subtotal) if quantity >= get_discount_threshold() else 0.0
+    discount = _money(get_discount_rate() * subtotal) if quantity >= get_discount_threshold() else 0.0
     taxable = _money(subtotal - discount)
     gst = _money(GST_RATE * taxable)
     total = _money(taxable + gst)

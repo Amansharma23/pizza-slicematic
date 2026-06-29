@@ -2573,6 +2573,7 @@ def build_demo() -> gr.Blocks:
             )
             
         disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
+        disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
         
         def refresh_analytics(f_type, f_date):
             data = analytics.get_analytics(f_type, f_date)
