@@ -5,12 +5,12 @@ from core.persistence import LOG_FILE
 
 # The fields matching persistence.FIELD_ORDER
 COLUMNS = [
-    "timestamp", "name", "phone", "base", "pizza", "topping", 
+    "order_id", "timestamp", "name", "phone", "base", "pizza", "topping",
     "unit_price", "quantity", "subtotal", "discount", "gst", "total", "payment_mode"
 ]
 
 def load_orders_df() -> pd.DataFrame:
-    """Load orders_log.txt into a pandas DataFrame."""
+    """Load the local orders log into a pandas DataFrame."""
     if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
         return pd.DataFrame(columns=COLUMNS)
     
@@ -20,7 +20,11 @@ def load_orders_df() -> pd.DataFrame:
         for line in f:
             line = line.strip()
             if line:
-                lines.append(line.split(" | "))
+                parts = line.lstrip("\ufeff").split(" | ")
+                if len(parts) == len(COLUMNS) - 1:
+                    parts = [""] + parts
+                if len(parts) == len(COLUMNS):
+                    lines.append(parts)
                 
     df = pd.DataFrame(lines, columns=COLUMNS)
     if df.empty:

@@ -3,7 +3,7 @@
 Order of operations (PRD FR-5) — do not reorder:
     unit_price = base + pizza + topping
     subtotal   = unit_price * quantity
-    discount   = 10% of subtotal if quantity >= 5 else 0
+    discount   = configured discount % of subtotal if quantity meets threshold
     taxable    = subtotal - discount
     gst        = 18% of taxable          (on the post-discount amount)
     total      = taxable + gst
@@ -14,8 +14,7 @@ from __future__ import annotations
 
 from core.models import MenuItem, Bill
 
-DISCOUNT_THRESHOLD = 5      # quantity at or above which the discount applies
-_discount_threshold = 5
+_discount_threshold = 5     # quantity at or above which the discount applies
 _discount_rate = 0.10       # 10%
 GST_RATE = 0.18             # 18%
 
@@ -28,12 +27,17 @@ def set_discount_rate(rate: float):
     global _discount_rate
     _discount_rate = float(rate)
 
+
 def get_discount_threshold() -> int:
     return _discount_threshold
 
-def set_discount_threshold(discount: int):
+
+def set_discount_threshold(threshold: int):
     global _discount_threshold
-    _discount_threshold = int(discount)
+    threshold = int(threshold)
+    if threshold < 1:
+        raise ValueError("Discount threshold must be at least 1.")
+    _discount_threshold = threshold
 
 
 def _money(value: float) -> float:
@@ -49,6 +53,7 @@ def compute_bill(
     """Compute the itemised bill for one configuration × quantity."""
     unit_price = _money(base.price + pizza.price + topping.price)
     subtotal = _money(unit_price * quantity)
+    discount = _money(get_discount_rate() * subtotal) if quantity >= get_discount_threshold() else 0.0
     discount = _money(get_discount_rate() * subtotal) if quantity >= get_discount_threshold() else 0.0
     taxable = _money(subtotal - discount)
     gst = _money(GST_RATE * taxable)

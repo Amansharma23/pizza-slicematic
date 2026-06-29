@@ -9,7 +9,6 @@ endpoints; core/ remains the single source of truth.
 from __future__ import annotations
 
 import os
-from datetime import datetime
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -92,6 +91,7 @@ class OrderReq(CustomerReq, SummaryReq):
 
 class ConfigReq(BaseModel):
     discount_rate: float
+    discount_threshold: int = 5
 
 
 # --------------------------------------------------------------------------- #
@@ -154,8 +154,7 @@ def place_order(req: OrderReq):
     if errors:
         return {"ok": False, "errors": errors}
 
-    ts = persistence.append_order(name=name, phone=phone, bill=bill, payment_mode=mode)
-    order_no = f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((phone, ts))) % 10000:04d}"
+    ts, order_no = persistence.append_order(name=name, phone=phone, bill=bill, payment_mode=mode)
     return {
         "ok": True,
         "order_no": order_no,
@@ -168,13 +167,21 @@ def place_order(req: OrderReq):
 
 @router.get("/config")
 def get_config():
-    return {"discount_rate": pricing.get_discount_rate()}
+    return {
+        "discount_rate": pricing.get_discount_rate(),
+        "discount_threshold": pricing.get_discount_threshold(),
+    }
 
 
 @router.post("/config")
 def update_config(req: ConfigReq):
     pricing.set_discount_rate(req.discount_rate)
-    return {"ok": True, "discount_rate": pricing.get_discount_rate()}
+    pricing.set_discount_threshold(req.discount_threshold)
+    return {
+        "ok": True,
+        "discount_rate": pricing.get_discount_rate(),
+        "discount_threshold": pricing.get_discount_threshold(),
+    }
 
 
 @router.get("/analytics")

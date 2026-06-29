@@ -1,10 +1,10 @@
-"""Append completed orders to orders_log.txt in the graded, parseable format.
+"""Append completed orders to database/orders_log.txt in the parseable format.
 
 One order per block, pipe-separated fields within a single line, a blank line
 between orders (NFR-4 / FR-8.3). Field order is fixed:
 
-    timestamp | name | phone | base | pizza | topping | unit_price |
-    quantity | subtotal | discount | gst | total | payment_mode
+    order_id | timestamp | name | phone | base | pizza | topping |
+    unit_price | quantity | subtotal | discount | gst | total | payment_mode
 """
 
 from __future__ import annotations
@@ -17,10 +17,11 @@ from core.models import Bill
 if os.environ.get("SPACE_ID"):
     LOG_FILE = "/data/orders_log.txt"
 else:
-    LOG_FILE = "orders_log.txt"
+    LOG_FILE = os.path.join(os.environ.get("DATABASE_DIR", "database"), "orders_log.txt")
 SEP = " | "
 
 FIELD_ORDER = [
+    "order_id",
     "timestamp",
     "name",
     "phone",
@@ -37,8 +38,38 @@ FIELD_ORDER = [
 ]
 
 
+def _order_number(order_id: str) -> int | None:
+    if not order_id.startswith("SM-"):
+        return None
+    number = order_id[3:]
+    return int(number) if number.isdigit() else None
+
+
+def next_order_id(path: str = LOG_FILE) -> str:
+    """Return the next sequential order id, accounting for old logs."""
+    if not os.path.isfile(path) or os.path.getsize(path) == 0:
+        return "SM-000001"
+
+    max_seen = 0
+    legacy_records = 0
+    with open(path, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line:
+                continue
+            parts = line.split(SEP)
+            if len(parts) == len(FIELD_ORDER):
+                parsed = _order_number(parts[0].strip())
+                if parsed:
+                    max_seen = max(max_seen, parsed)
+            else:
+                legacy_records += 1
+    return f"SM-{max(max_seen, legacy_records) + 1:06d}"
+
+
 def format_order_line(
     *,
+    order_id: str,
     timestamp: str,
     name: str,
     phone: str,
@@ -47,6 +78,7 @@ def format_order_line(
 ) -> str:
     """Build the single pipe-separated line for one order."""
     fields = [
+        order_id,
         timestamp,
         name,
         phone,
@@ -73,11 +105,14 @@ def append_order(
     bill: Bill,
     payment_mode: str,
     timestamp: str | None = None,
+    order_id: str | None = None,
     path: str = LOG_FILE,
-) -> str:
-    """Append one completed order block. Returns the timestamp written."""
+) -> tuple[str, str]:
+    """Append one completed order block. Returns ``(timestamp, order_id)``."""
     timestamp = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    order_id = order_id or next_order_id(path)
     line = format_order_line(
+        order_id=order_id,
         timestamp=timestamp,
         name=name,
         phone=phone,
@@ -85,9 +120,12 @@ def append_order(
         payment_mode=payment_mode,
     )
     # One order per block + a blank line between orders.
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     needs_gap = os.path.isfile(path) and os.path.getsize(path) > 0
     with open(path, "a", encoding="utf-8") as fh:
         if needs_gap:
             fh.write("\n")
         fh.write(line + "\n")
-    return timestamp
+    return timestamp, order_id
