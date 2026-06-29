@@ -8,6 +8,5 @@ P7;BBQ Chicken;379.00
 P8;Paneer Tikka;349.00
 P9;Aman's Special;649.00
 P10;Mouli BBQ;459.00
-P11;Sushant Classic;499.00
 P12;Pasha Mexicano;399.00
 P13;Saurabh DilSeIndia;429.00

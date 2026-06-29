@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import html
 from datetime import datetime
 
 import gradio as gr
@@ -134,7 +135,7 @@ def render_payment_html() -> str:
         f'<span class="ml-name">{mode}</span></div>'
         for num, mode in (("1", "Cash"), ("2", "Card"), ("3", "UPI"))
     )
-    return f'<div class="menu-list"><div class="ml-cat"><div class="ml-cat-title">Payment</div>{rows}</div></div>'
+    return f'<div class="menu-list payment-list"><div class="ml-cat"><div class="ml-cat-title">Payment</div>{rows}</div></div>'
 
 
 def _menu_file_paths(menu_dir: str) -> dict[str, str]:
@@ -203,6 +204,89 @@ def bill_html(bill) -> str:
     """
 
 
+def _money(value: float) -> str:
+    return f"{value:,.2f}"
+
+
+def _display_timestamp(value: str | None) -> str:
+    if not value:
+        return datetime.now().strftime("%Y-%m-%d - %H:%M:%S")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d - %H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt).strftime("%Y-%m-%d - %H:%M:%S")
+        except ValueError:
+            continue
+    return value
+
+
+def bill_html(bill, *, compact: bool = False, order: dict | None = None, show_promo: bool = True) -> str:
+    rate_pct = int(pricing.get_discount_rate() * 100)
+    threshold = pricing.get_discount_threshold()
+    promo = (
+        f'<div class="promo-strip">Order {threshold} or more pizzas and unlock {rate_pct}% off your subtotal.</div>'
+        if show_promo and rate_pct > 0
+        else ""
+    )
+    discount_row = (
+        f'<div class="bill-row discount"><span>Discount ({rate_pct}%)</span><span>-{_money(bill.discount)}</span></div>'
+        if bill.discount > 0
+        else ""
+    )
+    meta = ""
+    if order:
+        order_no = html.escape(str(order.get("order_no", "")))
+        order_ts = html.escape(_display_timestamp(order.get("order_timestamp") or order.get("timestamp")))
+        meta = (
+            '<div class="receipt-meta">'
+            f'<span>Order ID <b>{order_no}</b></span>'
+            f'<span>Date - time <b>{order_ts}</b></span>'
+            '</div>'
+        )
+    card_class = "bill-card compact" if compact else "bill-card"
+    return f"""
+    <div class="{card_class}">
+      {meta}
+      {promo}
+      <div class="bill-section">
+        <div class="bill-row"><span>{html.escape(bill.base.name)}</span><span>{_money(bill.base.price)}</span></div>
+        <div class="bill-row"><span>{html.escape(bill.pizza.name)}</span><span>{_money(bill.pizza.price)}</span></div>
+        <div class="bill-row"><span>{html.escape(bill.topping.name)}</span><span>{_money(bill.topping.price)}</span></div>
+      </div>
+      <div class="bill-row"><span>Unit price</span><span>{_money(bill.unit_price)}</span></div>
+      <div class="bill-row"><span>Quantity</span><span>x {bill.quantity}</span></div>
+      <div class="bill-row"><span>Subtotal</span><span>{_money(bill.subtotal)}</span></div>
+      {discount_row}
+      <div class="bill-row"><span>GST (18%)</span><span>{_money(bill.gst)}</span></div>
+      <div class="bill-row total"><span>Total payable</span><span>₹{_money(bill.total)}</span></div>
+    </div>
+    """
+
+
+def receipt_text(order: dict) -> str:
+    bill = order["bill"]
+    return "\n".join(
+        [
+            "SliceMatic Order Receipt",
+            f"Order ID: {order.get('order_no', '')}",
+            f"Date - time: {_display_timestamp(order.get('order_timestamp') or order.get('timestamp'))}",
+            f"Customer: {order.get('name', '')}",
+            f"Phone: {order.get('phone', '')}",
+            f"Payment: {order.get('payment_mode', '')}",
+            "",
+            f"{bill.base.name}: {bill.base.price:.2f}",
+            f"{bill.pizza.name}: {bill.pizza.price:.2f}",
+            f"{bill.topping.name}: {bill.topping.price:.2f}",
+            f"Unit price: {bill.unit_price:.2f}",
+            f"Quantity: {bill.quantity}",
+            f"Subtotal: {bill.subtotal:.2f}",
+            f"Discount: {bill.discount:.2f}",
+            f"GST: {bill.gst:.2f}",
+            f"Total payable: ₹{bill.total:.2f}",
+            "",
+        ]
+    )
+
+
 # --------------------------------------------------------------------------- #
 # FastAPI surface — same shared router the HTML frontend uses (api/routes.py).
 # Exposed for /docs + Stage 3; the Gradio UI calls core/ directly, not these.
@@ -243,9 +327,9 @@ CSS = """
 .hide .back-btn-custom, .hide .icon-wrap { display: none !important; }
 .gradio-container {max-width: 1040px !important; width:100% !important; margin: auto !important;}
 body {
-    background: radial-gradient(circle at 15% 50%, rgba(204, 213, 174, 0.6), transparent 25%),
-                radial-gradient(circle at 85% 30%, rgba(233, 237, 201, 0.6), transparent 25%),
-                #FEFAE0 !important;
+    background: radial-gradient(circle at 18% 18%, rgba(255, 214, 102, 0.34), transparent 24%),
+                radial-gradient(circle at 82% 8%, rgba(220, 38, 38, 0.10), transparent 22%),
+                #FFF8E7 !important;
 }
 input, textarea, select {color:#1f2937 !important; transition: all 0.2s ease !important;}
 input:focus, textarea:focus {border-color: #606C38 !important; box-shadow: 0 0 0 3px rgba(96, 108, 56, 0.15) !important;}
@@ -268,10 +352,11 @@ textarea { resize: none !important; }
 
 /* Hero */
 #hero {
-    background: linear-gradient(135deg, #606C38 0%, #283618 100%);
-    border-radius:20px; padding:20px 30px; margin-bottom:0 !important;
+    background: linear-gradient(135deg, #5F6F2E 0%, #263915 100%);
+    border-radius:20px; padding:22px 36px; margin:0 auto !important;
     box-shadow: 0 10px 30px rgba(40, 54, 24, 0.2);
     position: relative; overflow: hidden;
+    width:100% !important; max-width:100% !important;
 }
 #hero::after {
     content: '🍕'; position: absolute; right: 20px; top: -10px; font-size: 100px; opacity: 0.15;
@@ -280,6 +365,44 @@ textarea { resize: none !important; }
 @keyframes float { 0% {transform: translateY(0px) rotate(0deg);} 50% {transform: translateY(-15px) rotate(5deg);} 100% {transform: translateY(0px) rotate(0deg);} }
 #hero h1 {margin:0; font-size:32px; font-weight:800; letter-spacing:-0.5px; color:#ffffff !important;}
 #hero p {margin:8px 0 0; font-size:16px; color:#E9EDC9 !important; font-weight: 500;}
+#view-row {
+    width:100% !important;
+    max-width:100% !important;
+    margin:-72px auto 34px !important;
+    height:42px !important;
+    min-height:42px !important;
+    position:relative !important;
+    z-index:5 !important;
+    justify-content:flex-end !important;
+    pointer-events:none !important;
+}
+#view-row > .block,
+#view-row .form,
+#view-row .wrap,
+#view-row .styler {
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    padding:0 !important;
+    margin:0 !important;
+}
+#view-row > .block:first-child {display:none !important;}
+.view-switch {
+    width:236px !important;
+    max-width:236px !important;
+    margin-left:auto !important;
+    margin-right:36px !important;
+    pointer-events:auto !important;
+}
+.view-switch select,
+.view-switch input {
+    height:42px !important;
+    border-radius:10px !important;
+    border:1px solid rgba(255,255,255,.65) !important;
+    background:rgba(255,255,255,.92) !important;
+    color:#1F2937 !important;
+    font-weight:700 !important;
+}
 
 /* Buttons animation */
 button { transition: all 0.2s ease !important; }
@@ -288,23 +411,23 @@ button.secondary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgb
 
 /* Connected Step pills */
 .steps {display:flex; align-items: center; justify-content: space-between; margin:4px 20px 8px; position: relative;}
-.steps::before { content: ''; position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: #E5E7EB; z-index: 0; }
+.steps::before { content: ''; position: absolute; left: 10%; right: 10%; top: 50%; height: 3px; background: #F97316; opacity:.35; z-index: 0; }
 .pill {
-    background:#ffffff; color:#9CA3AF; border:2px solid #E5E7EB; border-radius:999px;
+    background:#FFFDF7; color:#6B7280; border:2px solid #F6C36D; border-radius:999px;
     padding:8px 20px; font-size:14px; font-weight:600; z-index: 1; transition: all 0.3s ease;
 }
 .pill.active {
-    background: #606C38; color:#ffffff; border-color:#606C38;
-    box-shadow:0 4px 15px rgba(96, 108, 56, 0.3); transform: scale(1.05);
+    background: #6A7A32; color:#ffffff; border-color:#6A7A32;
+    box-shadow:0 5px 18px rgba(96, 108, 56, 0.32); transform: scale(1.05);
 }
 
 /* Glassmorphism card & Header */
 .page-card {
-    background: rgba(255, 255, 255, 0.7) !important; 
+    background: #FFFDF7 !important; 
     backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-    border:1px solid rgba(255, 255, 255, 0.8) !important;
+    border:1px solid #F3C677 !important;
     border-radius:24px !important; padding:20px 24px !important;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+    box-shadow: 0 20px 42px rgba(146, 64, 14, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
     width:100% !important; max-width:100% !important;
     justify-content:flex-start !important;
 }
@@ -357,7 +480,8 @@ button.btn-filter::after, a.btn-filter::after, .btn-filter button::after, .btn-f
 .page-card h3 {margin:0 0 16px !important; font-size:22px; font-weight:700; color:#111827; letter-spacing: -0.3px;}
 
 /* inputs */
-.page-card input, .page-card textarea {background:#fff !important; border:1px solid #D1D5DB !important;}
+.page-card input, .page-card textarea {background:#fff !important; border:1px solid #D1D5DB !important; font-size:15px !important;}
+.page-card label span {background:#D1FAE5 !important; color:#334155 !important; border-radius:7px !important; padding:4px 7px !important; font-weight:800 !important;}
 .styler {background:transparent !important;}
 
 /* Menu numbered list */
@@ -396,16 +520,1546 @@ button.btn-filter::after, a.btn-filter::after, .btn-filter button::after, .btn-f
 
 footer {visibility:hidden;}
 @media (max-width:768px){.build-row{flex-direction: column !important;} .checkout-col{max-width: 100% !important;}}
+
+/* Stage 2 polish pass */
+.gradio-container {max-width: 1280px !important; padding: 18px 24px 26px !important;}
+#hero {border-radius:18px; padding:22px 36px; margin:0 auto !important;}
+#hero h1 {font-size:32px;}
+#hero p {margin-top:6px; font-size:15px;}
+.tabs {margin-top:0 !important;}
+.tab-nav, .tabitem > .label-wrap {justify-content:flex-end !important;}
+.steps {margin:14px 42px 24px !important;}
+.page-card {padding:34px 38px !important; border-radius:22px !important; min-height:0 !important;}
+.page-card h3 {font-size:24px !important;}
+.menu-list {grid-template-columns: repeat(3, minmax(220px, 1fr)); gap:14px; margin:14px 0 18px;}
+.ml-cat {padding:14px 16px; border-color:#E5E7EB; box-shadow:0 8px 22px rgba(17,24,39,.04);}
+.ml-row {padding:6px 8px; font-size:14px;}
+.ml-price, .bill-row span:last-child {font-variant-numeric: tabular-nums; font-feature-settings:"tnum"; text-align:right;}
+.payment-list {grid-template-columns:minmax(260px, 420px); max-width:460px;}
+.payment-list .ml-row {grid-template-columns:auto 1fr; font-size:15px;}
+.bill-card {max-width:560px; padding:18px 22px !important; border-radius:14px; box-shadow:0 14px 34px rgba(17,24,39,.06);}
+.bill-card.compact {max-width:620px;}
+.promo-strip {background:#FFF7D6; color:#5F4B00; border:1px solid #FDE68A; border-radius:10px; padding:10px 12px; margin-bottom:12px; font-weight:700; text-align:center;}
+.bill-section {border:1px solid #EEF2F7; border-radius:10px; padding:6px 10px; margin-bottom:8px; background:#FCFCFA;}
+.bill-row {display:grid; grid-template-columns:minmax(0, 1fr) 132px; gap:18px; align-items:start; padding:8px 0; border-bottom:1px dashed #E5E7EB; color:#273244; font-size:15px;}
+.bill-row span:first-child {min-width:0; line-height:1.35;}
+.bill-row span:last-child {white-space:nowrap;}
+.bill-row.discount {color:#059669; font-weight:700;}
+.bill-row.total {border-bottom:none; border-top:2px solid #111827; margin-top:8px; padding-top:12px; font-size:21px; font-weight:800;}
+.bill-row.total span:last-child {font-size:24px;}
+.confirmation-card {max-width:620px; margin:0 auto; text-align:center;}
+.confirmation-actions {display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:16px;}
+@media (max-width: 900px) {
+  .gradio-container {padding:12px !important;}
+  .menu-list {grid-template-columns:1fr;}
+  .bill-row {grid-template-columns:minmax(0, 1fr) 112px;}
+}
+
+/* Final outlet-style layer: pizza tracker + clean ordering surface */
+#hero {
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:28px !important;
+  min-height:132px !important;
+  width:100% !important;
+  max-width:100% !important;
+  padding:24px 38px !important;
+  margin:0 auto 20px !important;
+  border-radius:22px !important;
+  background:
+    radial-gradient(circle at 82% 50%, rgba(255, 217, 102, .16), transparent 18%),
+    linear-gradient(135deg, #263916 0%, #5E7330 48%, #21310F 100%) !important;
+  border:1px solid rgba(255,255,255,.14) !important;
+  box-shadow:0 22px 52px rgba(37, 42, 16, .22) !important;
+  overflow:hidden !important;
+}
+#hero > .block,
+#hero .form,
+#hero .wrap,
+#hero .styler {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+#hero > .block:first-child {
+  flex:1 1 auto !important;
+  min-width:0 !important;
+}
+#hero::after {
+  right:270px !important;
+  top:-18px !important;
+  opacity:.11 !important;
+  filter:saturate(.9) !important;
+}
+.hero-copy h1 {
+  margin:0 !important;
+  color:#FFFFFF !important;
+  font-size:34px !important;
+  font-weight:900 !important;
+  letter-spacing:0 !important;
+}
+.hero-copy p {
+  margin:8px 0 0 !important;
+  color:#FFF3C4 !important;
+  font-size:16px !important;
+  font-weight:700 !important;
+}
+#hero .view-switch {
+  width:260px !important;
+  max-width:260px !important;
+  margin:0 !important;
+  flex:0 0 260px !important;
+  z-index:2 !important;
+}
+#hero .view-switch select,
+#hero .view-switch input {
+  height:46px !important;
+  border-radius:13px !important;
+  border:1px solid rgba(255,255,255,.72) !important;
+  background:rgba(255,255,255,.96) !important;
+  color:#172033 !important;
+  font-size:15px !important;
+  font-weight:850 !important;
+  box-shadow:0 12px 28px rgba(0,0,0,.12) !important;
+}
+#main-tabs {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+#main-tabs > * {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+}
+.steps {
+  background:#FFFDF7 !important;
+  border:1px solid #FED7AA !important;
+  border-radius:22px !important;
+  padding:18px 28px !important;
+  margin:4px 0 20px !important;
+  box-shadow:0 18px 40px rgba(154, 52, 18, .08) !important;
+}
+.steps::before {
+  left:8% !important;
+  right:8% !important;
+  height:4px !important;
+  background:linear-gradient(90deg, #C2410C, #F97316, #FACC15) !important;
+  opacity:.28 !important;
+}
+.pill {
+  min-width:118px !important;
+  text-align:center !important;
+  background:#FFFFFF !important;
+  color:#475569 !important;
+  border:2px solid #FDBA74 !important;
+  font-size:15px !important;
+  font-weight:850 !important;
+  padding:10px 20px !important;
+}
+.pill.active {
+  background:#B91C1C !important;
+  color:#FFFFFF !important;
+  border-color:#B91C1C !important;
+  box-shadow:0 12px 24px rgba(185, 28, 28, .22) !important;
+}
+.page-card {
+  background:#FFFFFF !important;
+  border:1px solid #FED7AA !important;
+  border-radius:24px !important;
+  padding:34px 38px !important;
+  box-shadow:0 22px 48px rgba(154, 52, 18, .09) !important;
+}
+.page-card h3 {
+  color:#101827 !important;
+  font-size:26px !important;
+  font-weight:900 !important;
+}
+.page-card label span {
+  background:#FFE7B8 !important;
+  color:#7C2D12 !important;
+  border-radius:8px !important;
+  padding:5px 8px !important;
+  font-weight:900 !important;
+}
+.page-card input,
+.page-card textarea {
+  border:1px solid #CBD5E1 !important;
+  border-radius:8px !important;
+  color:#111827 !important;
+}
+button.primary,
+.primary button {
+  background:#B91C1C !important;
+  border-color:#B91C1C !important;
+  color:#FFFFFF !important;
+}
+button.primary:hover,
+.primary button:hover {
+  background:#991B1B !important;
+  border-color:#991B1B !important;
+  box-shadow:0 12px 26px rgba(185, 28, 28, .24) !important;
+}
+@media (max-width: 760px) {
+  #hero {
+    flex-direction:column !important;
+    align-items:flex-start !important;
+    min-height:auto !important;
+    padding:22px !important;
+  }
+  #hero .view-switch {
+    width:100% !important;
+    max-width:100% !important;
+    flex:1 1 auto !important;
+  }
+  .steps {
+    padding:14px !important;
+    gap:8px !important;
+    overflow-x:auto !important;
+  }
+  .pill {
+    min-width:104px !important;
+  }
+}
+
+/* Judge-demo UI reset: one clean checkout surface after older style layers. */
+.gradio-container {
+  max-width:1320px !important;
+  padding:28px 30px 36px !important;
+}
+body {
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 198, 92, .26), transparent 28%),
+    radial-gradient(circle at 88% 14%, rgba(199, 32, 32, .10), transparent 24%),
+    linear-gradient(180deg, #FFF9DC 0%, #FFF6CB 100%) !important;
+}
+#hero {
+  display:flex !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:28px !important;
+  min-height:132px !important;
+  max-width:100% !important;
+  width:100% !important;
+  margin:0 auto 24px !important;
+  padding:26px 42px !important;
+  border-radius:18px !important;
+  border:1px solid rgba(255,255,255,.16) !important;
+  background:
+    linear-gradient(90deg, rgba(20, 45, 13, .95) 0%, rgba(77, 100, 35, .96) 56%, rgba(32, 54, 16, .98) 100%) !important;
+  box-shadow:0 22px 52px rgba(46, 53, 18, .22) !important;
+  overflow:hidden !important;
+}
+#hero::after {
+  content:"" !important;
+  position:absolute !important;
+  right:330px !important;
+  top:2px !important;
+  width:150px !important;
+  height:150px !important;
+  background:
+    radial-gradient(circle at 58% 35%, #8B2F22 0 9px, transparent 10px),
+    radial-gradient(circle at 50% 60%, #8B2F22 0 7px, transparent 8px),
+    radial-gradient(circle at 74% 66%, #8B2F22 0 7px, transparent 8px),
+    linear-gradient(135deg, #FFD36B 0%, #EAA33A 100%) !important;
+  clip-path:polygon(10% 8%, 96% 50%, 10% 92%) !important;
+  transform:rotate(-8deg) !important;
+  opacity:.15 !important;
+  filter:none !important;
+  animation:none !important;
+  pointer-events:none !important;
+}
+#hero .hero-copy-wrap,
+#hero .hero-switch-wrap,
+#hero .hero-copy-wrap > *,
+#hero .hero-switch-wrap > *,
+#hero .hero-copy-wrap .form,
+#hero .hero-switch-wrap .form,
+#hero .hero-copy-wrap .wrap,
+#hero .hero-switch-wrap .wrap {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+#hero .hero-copy-wrap {
+  flex:1 1 0 !important;
+  min-width:0 !important;
+  width:auto !important;
+}
+#hero .hero-switch-wrap {
+  flex:0 0 280px !important;
+  min-width:280px !important;
+  max-width:280px !important;
+  width:280px !important;
+  align-self:center !important;
+  margin-left:auto !important;
+  z-index:2 !important;
+}
+.hero-copy h1 {
+  margin:0 !important;
+  color:#FFFFFF !important;
+  font-size:34px !important;
+  line-height:1.08 !important;
+  font-weight:900 !important;
+  letter-spacing:0 !important;
+}
+.hero-copy p {
+  margin:10px 0 0 !important;
+  color:#FFF2B8 !important;
+  font-size:16px !important;
+  line-height:1.35 !important;
+  font-weight:750 !important;
+  letter-spacing:0 !important;
+}
+#hero .view-switch {
+  width:100% !important;
+  max-width:100% !important;
+  margin:0 !important;
+}
+#hero .view-switch select,
+#hero .view-switch input {
+  width:100% !important;
+  height:48px !important;
+  border-radius:8px !important;
+  border:1px solid rgba(255,255,255,.82) !important;
+  background:#FFFDF7 !important;
+  color:#111827 !important;
+  font-size:15px !important;
+  font-weight:850 !important;
+  box-shadow:0 12px 26px rgba(0,0,0,.13) !important;
+}
+#view-row {
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  width:100% !important;
+  max-width:100% !important;
+  height:48px !important;
+  min-height:48px !important;
+  margin:-114px auto 66px !important;
+  padding:0 42px !important;
+  position:relative !important;
+  z-index:20 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  pointer-events:none !important;
+  box-sizing:border-box !important;
+  overflow:visible !important;
+}
+#view-row > *,
+#view-row .form,
+#view-row .wrap,
+#view-row .styler {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin:0 !important;
+}
+#view-row .view-switch {
+  width:280px !important;
+  max-width:280px !important;
+  min-width:280px !important;
+  margin:0 !important;
+  position:absolute !important;
+  right:42px !important;
+  top:0 !important;
+  pointer-events:auto !important;
+  height:48px !important;
+  border:1px solid rgba(255,255,255,.82) !important;
+  border-radius:8px !important;
+  background:#FFFDF7 !important;
+  box-shadow:0 12px 26px rgba(0,0,0,.13) !important;
+  overflow:visible !important;
+}
+#view-row .view-switch label {
+  display:none !important;
+}
+#view-row .view-switch *,
+#view-row .view-switch button {
+  color:#111827 !important;
+  font-weight:850 !important;
+}
+#view-row .view-switch .wrap,
+#view-row .view-switch [role="combobox"] {
+  min-height:48px !important;
+  height:48px !important;
+  display:flex !important;
+  align-items:center !important;
+}
+#view-row .view-switch select,
+#view-row .view-switch input {
+  width:100% !important;
+  height:48px !important;
+  min-height:48px !important;
+  line-height:48px !important;
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+  border-radius:8px !important;
+  border:none !important;
+  background:transparent !important;
+  color:#111827 !important;
+  font-size:15px !important;
+  font-weight:850 !important;
+  box-shadow:none !important;
+}
+#main-tabs,
+#main-tabs > .block,
+#main-tabs > .form,
+#main-tabs > .wrap,
+#main-tabs > .styler,
+#main-tabs > div {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  width:100% !important;
+  max-width:100% !important;
+}
+.checkout-tracker {
+  position:relative !important;
+  display:grid !important;
+  grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
+  align-items:center !important;
+  gap:10px !important;
+  margin:0 0 18px !important;
+  padding:14px 20px !important;
+  min-height:74px !important;
+  background:#FFFDF7 !important;
+  border:1px solid #FFD08A !important;
+  border-radius:12px !important;
+  box-shadow:0 14px 30px rgba(149, 68, 13, .10) !important;
+}
+.checkout-tracker::before {
+  content:"" !important;
+  position:absolute !important;
+  left:11% !important;
+  right:11% !important;
+  top:50% !important;
+  height:4px !important;
+  transform:translateY(-50%) !important;
+  background:linear-gradient(90deg, #FFD08A, #F97316, #FFD08A) !important;
+  opacity:.55 !important;
+  z-index:0 !important;
+}
+.tracker-step {
+  position:relative !important;
+  z-index:1 !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:9px !important;
+  min-width:0 !important;
+  color:#475569 !important;
+  font-weight:850 !important;
+}
+.tracker-dot {
+  width:34px !important;
+  height:34px !important;
+  min-width:34px !important;
+  border-radius:50% !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  background:#FFFFFF !important;
+  border:2px solid #F59E0B !important;
+  color:#7C2D12 !important;
+  font-size:14px !important;
+  font-weight:900 !important;
+  box-shadow:0 4px 10px rgba(146, 64, 14, .10) !important;
+}
+.tracker-label {
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+  font-size:15px !important;
+  letter-spacing:0 !important;
+  background:#FFFDF7 !important;
+  border-radius:6px !important;
+  padding:0 6px !important;
+}
+.tracker-step.is-done .tracker-dot {
+  background:#61722F !important;
+  border-color:#61722F !important;
+  color:#FFFFFF !important;
+}
+.tracker-step.is-active .tracker-dot {
+  background:#C81E1E !important;
+  border-color:#C81E1E !important;
+  color:#FFFFFF !important;
+  box-shadow:0 10px 22px rgba(200, 30, 30, .24) !important;
+}
+.tracker-step.is-active .tracker-label {
+  color:#111827 !important;
+}
+.page-card {
+  background:#FFFDF7 !important;
+  border:1px solid #FFD08A !important;
+  border-radius:12px !important;
+  padding:34px 38px !important;
+  min-height:0 !important;
+  box-shadow:0 18px 42px rgba(149, 68, 13, .11) !important;
+}
+.page-card > .block,
+.page-card .form,
+.page-card .styler,
+.page-card .wrap,
+.page-card fieldset {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+}
+.page-card h3 {
+  margin:0 0 26px !important;
+  color:#101827 !important;
+  font-size:28px !important;
+  line-height:1.16 !important;
+  font-weight:900 !important;
+  letter-spacing:0 !important;
+}
+.page-card label span {
+  background:#FFE2A8 !important;
+  color:#9A3412 !important;
+  border-radius:7px !important;
+  padding:5px 8px !important;
+  font-weight:900 !important;
+  letter-spacing:0 !important;
+}
+.page-card input,
+.page-card textarea,
+.page-card select {
+  min-height:48px !important;
+  border:1px solid #D4B483 !important;
+  border-radius:8px !important;
+  background:#FFFFFF !important;
+  color:#111827 !important;
+  font-size:15px !important;
+  font-weight:650 !important;
+}
+.page-card input::placeholder,
+.page-card textarea::placeholder {
+  color:#8B95A7 !important;
+}
+button.primary,
+.primary button {
+  min-height:50px !important;
+  border-radius:8px !important;
+  background:#C81E1E !important;
+  border-color:#C81E1E !important;
+  color:#FFFFFF !important;
+  font-weight:900 !important;
+  letter-spacing:0 !important;
+}
+button.primary:hover,
+.primary button:hover {
+  background:#A91414 !important;
+  border-color:#A91414 !important;
+  transform:translateY(-1px) !important;
+  box-shadow:0 12px 26px rgba(200, 30, 30, .22) !important;
+}
+.menu-list {
+  grid-template-columns:repeat(3, minmax(210px, 1fr)) !important;
+  gap:14px !important;
+}
+.ml-cat {
+  border:1px solid #F2D3A1 !important;
+  border-radius:10px !important;
+  background:#FFFFFF !important;
+  box-shadow:0 8px 20px rgba(149, 68, 13, .06) !important;
+}
+.ml-cat-title {
+  color:#61722F !important;
+  border-bottom:1px solid #F5E3C5 !important;
+}
+.ml-row {
+  min-height:34px !important;
+  color:#1F2937 !important;
+}
+.ml-num {
+  background:#FFE2A8 !important;
+  color:#7C2D12 !important;
+}
+.ml-price,
+.bill-row span:last-child {
+  font-variant-numeric:tabular-nums !important;
+  font-feature-settings:"tnum" !important;
+  text-align:right !important;
+}
+.payment-list {
+  grid-template-columns:minmax(260px, 440px) !important;
+  max-width:470px !important;
+}
+.bill-card {
+  max-width:620px !important;
+  border:1px solid #E7C98E !important;
+  border-radius:10px !important;
+  background:#FFFFFF !important;
+  box-shadow:0 14px 34px rgba(17,24,39,.07) !important;
+}
+.promo-strip {
+  background:#FFF2B8 !important;
+  border:1px solid #F6C453 !important;
+  color:#7C2D12 !important;
+  border-radius:8px !important;
+}
+.bill-section {
+  background:#FFFDF7 !important;
+  border:1px solid #F1E0C5 !important;
+}
+.bill-row {
+  grid-template-columns:minmax(0, 1fr) 134px !important;
+}
+.bill-row.total {
+  color:#101827 !important;
+}
+.confirmation-card {
+  max-width:620px !important;
+}
+.err {
+  border-radius:8px !important;
+  border-left-color:#C81E1E !important;
+}
+#hero {
+  margin-bottom:8px !important;
+}
+#view-row {
+  margin:-104px auto 44px !important;
+}
+.checkout-tracker {
+  margin-bottom:14px !important;
+}
+.page-card {
+  padding-top:28px !important;
+}
+.header-row {
+  align-items:flex-start !important;
+  margin-bottom:18px !important;
+}
+.header-row h3 {
+  line-height:44px !important;
+}
+.icon-wrap {
+  padding-top:0 !important;
+}
+button.back-btn-custom {
+  margin-top:0 !important;
+}
+#view-row,
+#view-row *,
+#view-row .view-switch,
+#view-row .view-switch *,
+#view-row .view-switch input,
+#view-row .view-switch button {
+  cursor:pointer !important;
+  caret-color:transparent !important;
+}
+#view-row .view-switch {
+  height:46px !important;
+  max-height:46px !important;
+}
+#view-row .view-switch .wrap,
+#view-row .view-switch [role="combobox"],
+#view-row .view-switch input {
+  height:46px !important;
+  min-height:46px !important;
+  line-height:46px !important;
+}
+.payment-grid {
+  display:grid !important;
+  grid-template-columns:minmax(280px, 420px) minmax(360px, 1fr) !important;
+  gap:28px !important;
+  align-items:start !important;
+}
+.payment-left,
+.payment-right,
+.payment-left > *,
+.payment-right > * {
+  min-width:0 !important;
+}
+.payment-right {
+  background:#FFFFFF !important;
+  border:1px solid #F2D3A1 !important;
+  border-radius:12px !important;
+  padding:18px !important;
+  box-shadow:0 10px 24px rgba(149, 68, 13, .06) !important;
+}
+.payment-list {
+  max-width:100% !important;
+}
+.qr-box {
+  display:flex !important;
+  align-items:center !important;
+  gap:18px !important;
+  padding:12px !important;
+  border:1px dashed #DDA15E !important;
+  border-radius:10px !important;
+  background:#FFFDF7 !important;
+}
+.qr-box img {
+  width:150px !important;
+  height:150px !important;
+  border-radius:8px !important;
+  background:#FFFFFF !important;
+  padding:8px !important;
+  border:1px solid #F1E0C5 !important;
+}
+.qr-box p,
+.pay-hint {
+  color:#64748B !important;
+  font-weight:700 !important;
+  margin:0 !important;
+}
+.pay-hint {
+  padding:18px !important;
+  background:#FFF7D6 !important;
+  border:1px solid #F6C453 !important;
+  border-radius:10px !important;
+}
+.pay-hint.warn {
+  color:#991B1B !important;
+  background:#FEF2F2 !important;
+  border-color:#FCA5A5 !important;
+}
+.cash-return {
+  display:flex !important;
+  justify-content:space-between !important;
+  align-items:center !important;
+  padding:16px 18px !important;
+  background:#ECFDF5 !important;
+  border:1px solid #10B981 !important;
+  border-radius:10px !important;
+  color:#065F46 !important;
+}
+.cash-return span {
+  font-weight:850 !important;
+}
+.cash-return b {
+  font-size:22px !important;
+  font-variant-numeric:tabular-nums !important;
+}
+.final-grid {
+  display:grid !important;
+  grid-template-columns:minmax(420px, 1fr) minmax(340px, 420px) !important;
+  gap:24px !important;
+  align-items:start !important;
+}
+.final-grid:not(:has(.confirmation-card)) {
+  display:none !important;
+}
+.final-grid:has(.confirmation-card) {
+  display:grid !important;
+  margin-top:0 !important;
+}
+.page-card:has(.final-grid .confirmation-card) {
+  padding-top:12px !important;
+}
+.final-left,
+.final-actions {
+  min-width:0 !important;
+}
+.final-actions {
+  background:#FFFFFF !important;
+  border:1px solid #F2D3A1 !important;
+  border-radius:12px !important;
+  padding:16px !important;
+  box-shadow:0 10px 24px rgba(149, 68, 13, .06) !important;
+}
+.final-actions button,
+.final-actions a {
+  width:100% !important;
+  margin:0 0 12px !important;
+}
+.final-actions .bill-card {
+  width:100% !important;
+  max-width:none !important;
+  margin:14px 0 0 !important;
+  padding:14px !important;
+  box-shadow:none !important;
+}
+.final-actions .receipt-meta {
+  flex-direction:column !important;
+  gap:4px !important;
+  font-size:12px !important;
+}
+.final-actions .bill-row {
+  grid-template-columns:minmax(0, 1fr) 84px !important;
+  gap:10px !important;
+  font-size:13px !important;
+}
+.final-actions .bill-row.total {
+  font-size:16px !important;
+}
+.final-actions .bill-row.total span:last-child {
+  font-size:18px !important;
+}
+.confirmation-card {
+  padding:28px !important;
+  text-align:center !important;
+}
+.receipt-meta {
+  display:flex !important;
+  justify-content:space-between !important;
+  gap:16px !important;
+  padding:0 0 14px !important;
+  margin-bottom:14px !important;
+  border-bottom:1px dashed #E5E7EB !important;
+  color:#475569 !important;
+  font-size:14px !important;
+}
+.receipt-meta b {
+  color:#101827 !important;
+}
+.discount-grid {
+  display:grid !important;
+  grid-template-columns:repeat(2, minmax(220px, 1fr)) !important;
+  gap:18px !important;
+  align-items:end !important;
+  margin:18px 0 !important;
+}
+#hero {
+  height:150px !important;
+  min-height:150px !important;
+  max-height:150px !important;
+  position:relative !important;
+}
+#hero .hero-copy-wrap,
+#hero .hero-switch-wrap {
+  min-height:0 !important;
+  height:auto !important;
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:center !important;
+}
+#hero .hero-copy-wrap {
+  align-items:flex-start !important;
+  padding-right:340px !important;
+}
+#hero .hero-switch-wrap {
+  align-items:stretch !important;
+  position:absolute !important;
+  right:42px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  height:48px !important;
+  min-height:48px !important;
+  max-height:48px !important;
+}
+#main-tabs > *,
+#main-tabs > * > *,
+#main-tabs > * > * > *,
+#main-tabs [class*="group"],
+#main-tabs [class*="panel"],
+#main-tabs [class*="tabs"] {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+}
+#main-tabs .checkout-tracker {
+  background:#FFFDF7 !important;
+  border:1px solid #FFD08A !important;
+  box-shadow:0 14px 30px rgba(149, 68, 13, .10) !important;
+}
+#main-tabs .page-card {
+  background:#FFFDF7 !important;
+  border:1px solid #FFD08A !important;
+  box-shadow:0 18px 42px rgba(149, 68, 13, .11) !important;
+}
+#main-tabs .ml-cat,
+#main-tabs .bill-card,
+#main-tabs .kpi-table {
+  background:#FFFFFF !important;
+}
+
+/* Final Stage 2 visual pass */
+#view-row .view-switch {
+  width:340px !important;
+  max-width:340px !important;
+  min-width:340px !important;
+  height:56px !important;
+  max-height:56px !important;
+  right:42px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  background:#B7F34A !important;
+  border:2px solid #8FD42E !important;
+  border-radius:10px !important;
+  box-shadow:0 14px 28px rgba(57, 93, 20, .24) !important;
+  overflow:hidden !important;
+}
+#view-row .view-switch .wrap,
+#view-row .view-switch [role="combobox"],
+#view-row .view-switch input,
+#view-row .view-switch select {
+  height:56px !important;
+  min-height:56px !important;
+  line-height:56px !important;
+  background:#B7F34A !important;
+  border:none !important;
+  box-shadow:none !important;
+  color:#101827 !important;
+  font-size:16px !important;
+  font-weight:900 !important;
+  text-align:center !important;
+  cursor:pointer !important;
+}
+#view-row .view-switch input,
+#view-row .view-switch select {
+  padding:0 58px 0 58px !important;
+}
+#view-row .view-switch button {
+  position:absolute !important;
+  right:14px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:36px !important;
+  height:36px !important;
+  min-width:36px !important;
+  margin:0 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  cursor:pointer !important;
+}
+#view-row .view-switch svg {
+  width:24px !important;
+  height:24px !important;
+  color:#101827 !important;
+  stroke-width:3px !important;
+}
+
+.customer-field-row {
+  display:grid !important;
+  grid-template-columns:260px minmax(0, 1fr) !important;
+  gap:20px !important;
+  align-items:center !important;
+  margin:14px 0 !important;
+}
+.customer-field-row > *,
+.customer-field-row .form,
+.customer-field-row .block,
+.customer-field-row .wrap {
+  min-width:0 !important;
+}
+.customer-field-label {
+  width:100% !important;
+  color:#2E4B17 !important;
+  font-size:16px !important;
+  font-weight:900 !important;
+  line-height:1.25 !important;
+  text-align:right !important;
+}
+.customer-field-row label span {
+  background:#DDFCC0 !important;
+  color:#2E4B17 !important;
+}
+
+#main-tabs .checkout-tracker {
+  background:#FFFDF7 !important;
+  border:1px solid #CFE8A6 !important;
+  border-radius:12px !important;
+  box-shadow:0 12px 28px rgba(77, 107, 41, .12) !important;
+}
+#main-tabs .checkout-tracker::before {
+  background:#DCE9C5 !important;
+  opacity:1 !important;
+}
+.tracker-dot {
+  background:#FFFFFF !important;
+  border-color:#D4DEC0 !important;
+  color:#52606D !important;
+}
+.tracker-step.is-done .tracker-dot {
+  background:#8FDB3B !important;
+  border-color:#8FDB3B !important;
+  color:#172033 !important;
+}
+.tracker-step.is-active .tracker-dot {
+  background:#F6C343 !important;
+  border-color:#F6C343 !important;
+  color:#172033 !important;
+  box-shadow:0 10px 22px rgba(246, 195, 67, .32) !important;
+}
+.tracker-step.is-active .tracker-label {
+  color:#172033 !important;
+  font-weight:900 !important;
+}
+
+button.primary,
+.primary button {
+  background:#F6C343 !important;
+  border-color:#F6C343 !important;
+  color:#172033 !important;
+  box-shadow:0 10px 22px rgba(246, 195, 67, .18) !important;
+}
+button.primary:hover,
+.primary button:hover {
+  background:#E7B230 !important;
+  border-color:#E7B230 !important;
+  box-shadow:0 12px 26px rgba(231, 178, 48, .24) !important;
+}
+
+/* Hero and details form final layout */
+#hero {
+  display:grid !important;
+  grid-template-columns:minmax(0, 1fr) 320px !important;
+  align-items:center !important;
+  gap:32px !important;
+  height:auto !important;
+  min-height:142px !important;
+  max-height:none !important;
+  margin:0 auto 18px !important;
+  padding:26px 40px !important;
+  border-radius:18px !important;
+  background:
+    radial-gradient(circle at 73% 48%, rgba(246, 195, 67, .16), transparent 17%),
+    linear-gradient(105deg, #183613 0%, #31531B 48%, #1F3A13 100%) !important;
+  box-shadow:0 18px 42px rgba(24, 54, 19, .20) !important;
+  position:relative !important;
+  z-index:50 !important;
+  overflow:visible !important;
+}
+#hero::after {
+  right:290px !important;
+  top:-4px !important;
+  width:132px !important;
+  height:132px !important;
+  opacity:.12 !important;
+}
+#hero .hero-copy-wrap,
+#hero .hero-switch-wrap {
+  position:relative !important;
+  right:auto !important;
+  top:auto !important;
+  transform:none !important;
+  min-height:0 !important;
+  height:auto !important;
+  max-height:none !important;
+  width:auto !important;
+  max-width:none !important;
+  padding:0 !important;
+  margin:0 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+}
+#hero .hero-copy-wrap {
+  align-items:flex-start !important;
+}
+#hero .hero-switch-wrap {
+  align-items:stretch !important;
+  justify-content:center !important;
+  z-index:3 !important;
+}
+#hero .view-switch {
+  width:100% !important;
+  max-width:320px !important;
+  min-width:0 !important;
+  margin:0 !important;
+  height:52px !important;
+  background:#FFF7E6 !important;
+  border:1px solid rgba(255, 211, 138, .95) !important;
+  border-radius:12px !important;
+  box-shadow:0 12px 28px rgba(0, 0, 0, .18) !important;
+  overflow:visible !important;
+  z-index:60 !important;
+  cursor:pointer !important;
+}
+#hero .view-switch label {
+  display:none !important;
+}
+#hero .view-switch .wrap,
+#hero .view-switch [role="combobox"],
+#hero .view-switch input,
+#hero .view-switch select {
+  height:52px !important;
+  min-height:52px !important;
+  line-height:52px !important;
+  background:#FFF7E6 !important;
+  border:none !important;
+  box-shadow:none !important;
+  color:#101827 !important;
+  font-size:16px !important;
+  font-weight:900 !important;
+  cursor:pointer !important;
+}
+#hero .view-switch input,
+#hero .view-switch select {
+  text-align:center !important;
+  padding:0 52px 0 24px !important;
+  caret-color:transparent !important;
+}
+#hero .view-switch button {
+  position:absolute !important;
+  right:12px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:34px !important;
+  height:34px !important;
+  min-width:34px !important;
+  margin:0 !important;
+  padding:0 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  cursor:pointer !important;
+}
+#hero .view-switch svg {
+  color:#27421A !important;
+  stroke-width:3px !important;
+}
+
+#main-tabs .page-card {
+  padding:28px 38px 30px !important;
+}
+.page-card .header-row {
+  margin-bottom:12px !important;
+}
+.page-card .header-row h3 {
+  line-height:1.18 !important;
+  margin-bottom:0 !important;
+}
+.customer-field-row {
+  grid-template-columns:260px minmax(0, 1fr) !important;
+  gap:18px !important;
+  margin:10px 0 14px !important;
+}
+.customer-field-row label {
+  display:none !important;
+}
+.customer-field-row input {
+  min-height:50px !important;
+}
+.customer-field-label {
+  text-align:right !important;
+}
+
+@media (max-width: 820px) {
+  html,
+  body,
+  gradio-app,
+  .gradio-container {
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    overflow-x:hidden !important;
+    box-sizing:border-box !important;
+  }
+  .gradio-container {
+    padding:14px 10px 24px !important;
+    margin:0 !important;
+  }
+  #hero {
+    flex-direction:column !important;
+    align-items:stretch !important;
+    min-height:0 !important;
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 0 16px !important;
+    padding:22px !important;
+    gap:18px !important;
+    box-sizing:border-box !important;
+  }
+  #hero::after {
+    display:none !important;
+  }
+  #hero .hero-copy-wrap,
+  #hero .hero-switch-wrap {
+    flex:1 1 auto !important;
+    width:100% !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    position:static !important;
+    transform:none !important;
+    height:auto !important;
+    padding-right:0 !important;
+  }
+  #view-row {
+    width:100% !important;
+    max-width:100% !important;
+    height:auto !important;
+    min-height:0 !important;
+    margin:-4px auto 16px !important;
+    padding:0 !important;
+    justify-content:stretch !important;
+    box-sizing:border-box !important;
+  }
+  #view-row .view-switch {
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    position:static !important;
+  }
+  .hero-copy h1 {
+    font-size:28px !important;
+  }
+  .checkout-tracker {
+    width:100% !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+    padding:14px !important;
+  }
+  .checkout-tracker::before {
+    display:none !important;
+  }
+  .tracker-step {
+    justify-content:flex-start !important;
+  }
+  .menu-list {
+    grid-template-columns:1fr !important;
+  }
+  .page-card {
+    width:100% !important;
+    max-width:100% !important;
+    padding:24px 18px !important;
+    box-sizing:border-box !important;
+  }
+  .page-card h3 {
+    font-size:24px !important;
+  }
+  .payment-grid,
+  .final-grid,
+  .discount-grid {
+    grid-template-columns:1fr !important;
+  }
+  .payment-right,
+  .final-actions {
+    padding:14px !important;
+  }
+  .qr-box {
+    flex-direction:column !important;
+    text-align:center !important;
+  }
+  .receipt-meta {
+    flex-direction:column !important;
+    gap:6px !important;
+  }
+  .bill-row {
+    grid-template-columns:minmax(0, 1fr) 112px !important;
+  }
+}
+
+/* Stage 2 scoped repair: keep only the intended hero/dropdown/details behavior. */
+.gradio-container {
+  max-width:1280px !important;
+  padding:24px 28px 36px !important;
+}
+#hero {
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:32px !important;
+  width:100% !important;
+  min-height:132px !important;
+  height:auto !important;
+  max-height:none !important;
+  margin:0 auto 18px !important;
+  padding:26px 38px !important;
+  border-radius:18px !important;
+  background:
+    radial-gradient(circle at 72% 50%, rgba(252, 211, 77, .15), transparent 18%),
+    linear-gradient(105deg, #193713 0%, #33551D 52%, #1C3512 100%) !important;
+  border:1px solid rgba(255,255,255,.14) !important;
+  box-shadow:0 18px 42px rgba(24, 54, 19, .18) !important;
+  overflow:visible !important;
+}
+#hero::after {
+  right:350px !important;
+  top:0 !important;
+  width:128px !important;
+  height:128px !important;
+  opacity:.12 !important;
+  pointer-events:none !important;
+}
+#hero .hero-copy-wrap,
+#hero .hero-switch-wrap,
+#hero .hero-copy-wrap > *,
+#hero .hero-switch-wrap > *,
+#hero .hero-copy-wrap .form,
+#hero .hero-switch-wrap .form,
+#hero .hero-copy-wrap .wrap,
+#hero .hero-switch-wrap .wrap {
+  position:static !important;
+  transform:none !important;
+  right:auto !important;
+  top:auto !important;
+  width:auto !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  padding:0 !important;
+  margin:0 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  overflow:visible !important;
+}
+#hero .hero-copy-wrap {
+  flex:1 1 auto !important;
+  min-width:0 !important;
+}
+#hero .hero-switch-wrap {
+  flex:0 0 310px !important;
+  max-width:310px !important;
+  min-width:310px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  z-index:10 !important;
+}
+#hero .view-switch,
+#hero .view-switch > *,
+#hero .view-switch .wrap,
+#hero .view-switch [role="combobox"] {
+  width:100% !important;
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  margin:0 !important;
+  padding:0 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  overflow:visible !important;
+}
+#hero .view-switch input,
+#hero .view-switch select {
+  display:block !important;
+  width:100% !important;
+  height:50px !important;
+  min-height:50px !important;
+  line-height:50px !important;
+  padding:0 52px 0 18px !important;
+  border:1px solid #F0D49B !important;
+  border-radius:12px !important;
+  background:#FFF8E8 !important;
+  color:#101827 !important;
+  font-size:16px !important;
+  font-weight:900 !important;
+  text-align:center !important;
+  box-shadow:0 12px 24px rgba(0,0,0,.16) !important;
+  cursor:pointer !important;
+  caret-color:transparent !important;
+}
+#hero .view-switch button {
+  position:absolute !important;
+  right:12px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:32px !important;
+  height:32px !important;
+  min-width:32px !important;
+  padding:0 !important;
+  margin:0 !important;
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  cursor:pointer !important;
+}
+
+#main-tabs {
+  margin-top:0 !important;
+}
+#main-tabs .page-card {
+  padding:28px 38px 34px !important;
+}
+#main-tabs .page-card .header-row {
+  margin-bottom:18px !important;
+}
+#main-tabs .page-card .header-row h3 {
+  line-height:1.15 !important;
+  margin:0 !important;
+}
+.customer-field-row {
+  display:flex !important;
+  align-items:center !important;
+  gap:18px !important;
+  margin:8px 0 14px !important;
+  width:100% !important;
+}
+.customer-label-col,
+.customer-label-col > *,
+.customer-control-col,
+.customer-control-col > *,
+.customer-control-col .form,
+.customer-control-col .wrap {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  margin:0 !important;
+  min-height:0 !important;
+}
+.customer-label-col {
+  flex:0 0 260px !important;
+  max-width:260px !important;
+}
+.customer-control-col {
+  flex:1 1 auto !important;
+  min-width:0 !important;
+}
+.customer-field-label {
+  color:#29491B !important;
+  font-size:16px !important;
+  font-weight:900 !important;
+  text-align:right !important;
+  line-height:1.2 !important;
+}
+.customer-control-col label {
+  display:block !important;
+  width:100% !important;
+  margin:0 !important;
+  padding:0 !important;
+}
+.customer-control-col label > span {
+  display:none !important;
+}
+.customer-control-col input {
+  display:block !important;
+  width:100% !important;
+  min-height:50px !important;
+  border:1px solid #DDA15E !important;
+  border-radius:8px !important;
+  background:#FFFFFF !important;
+  color:#101827 !important;
+  font-size:15px !important;
+  font-weight:700 !important;
+  box-shadow:none !important;
+}
+.customer-control-col input::placeholder {
+  color:#8792A3 !important;
+}
+.page-card > .gr-group:has(.header-row.hide):not(:has(.final-grid)) {
+  display:none !important;
+  height:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  overflow:hidden !important;
+}
+
+#hero .hero-switch-wrap,
+#hero .hero-switch-wrap > *,
+#hero .hero-switch-wrap .form,
+#hero .hero-switch-wrap .wrap,
+#hero .view-switch,
+#hero .view-switch > *,
+#hero .view-switch .wrap,
+#hero .view-switch [role="combobox"] {
+  height:52px !important;
+  min-height:52px !important;
+  max-height:52px !important;
+}
+#hero .hero-switch-wrap {
+  align-self:center !important;
+}
+#hero .view-switch {
+  position:relative !important;
+}
+#hero .view-switch > .hide {
+  display:none !important;
+  height:0 !important;
+  min-height:0 !important;
+  max-height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  overflow:hidden !important;
+}
+#hero .view-switch .wrap-inner {
+  height:52px !important;
+  min-height:52px !important;
+  max-height:52px !important;
+  padding:6px 12px !important;
+  border:1px solid #F0D49B !important;
+  border-radius:12px !important;
+  background:#FFF8E8 !important;
+  box-shadow:0 12px 24px rgba(0,0,0,.16) !important;
+}
+#hero .view-switch .secondary-wrap {
+  height:40px !important;
+  min-height:40px !important;
+  align-items:center !important;
+}
+#hero .view-switch input {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  height:40px !important;
+  min-height:40px !important;
+  line-height:40px !important;
+  padding:0 42px 0 12px !important;
+}
+
+#main-tabs .page-card:has(.final-grid .confirmation-card) {
+  padding-top:12px !important;
+}
+#main-tabs .page-card:has(.final-grid .confirmation-card) .styler:has(> .final-grid) > .gr-group:first-child,
+#main-tabs .page-card:has(.final-grid .confirmation-card) .styler:has(> .final-grid) > .block.hide-container {
+  display:none !important;
+  height:0 !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  overflow:hidden !important;
+}
+
+@media (max-width: 820px) {
+  #hero {
+    flex-direction:column !important;
+    align-items:stretch !important;
+    gap:18px !important;
+    padding:22px !important;
+  }
+  #hero::after {
+    display:none !important;
+  }
+  #hero .hero-switch-wrap {
+    flex:1 1 auto !important;
+    min-width:0 !important;
+    max-width:100% !important;
+  }
+  .customer-field-row {
+    flex-direction:column !important;
+    align-items:stretch !important;
+    gap:8px !important;
+  }
+  .customer-label-col {
+    flex:1 1 auto !important;
+    max-width:100% !important;
+  }
+  .customer-field-label {
+    text-align:left !important;
+  }
+}
 """
 
 
 def step_pills(active: int) -> str:
     labels = ["Details", "Customize", "Summary", "Pay"]
-    spans = "".join(
-        f'<span class="pill{" active" if i + 2 == active else ""}">{lbl}</span>'
-        for i, lbl in enumerate(labels)
-    )
-    return f'<div class="steps">{spans}</div>'
+    steps = []
+    for i, label in enumerate(labels):
+        step_num = i + 1
+        screen_num = i + 2
+        state = "is-active" if screen_num == active else "is-done" if screen_num < active else ""
+        steps.append(
+            f'<div class="tracker-step {state}">'
+            f'<span class="tracker-dot">{step_num}</span>'
+            f'<span class="tracker-label">{label}</span>'
+            f'</div>'
+        )
+    return f'<div class="checkout-tracker">{"".join(steps)}</div>'
 
 
 def generate_kpis_html(orders, qty, rev, gst, disc):
@@ -478,21 +2132,56 @@ def build_demo() -> gr.Blocks:
         up_pizza_fp = gr.State(None)
         up_topping_fp = gr.State(None)
 
-        gr.HTML(f'<div id="hero"><h1>🍕 {BRAND}</h1>'
-                f'<p>Fresh, fast, fairly priced — order in four quick steps.</p></div>')
-        
-        with gr.Tabs():
-            with gr.Tab("Customer Ordering"):
+        with gr.Row(elem_id="hero"):
+            with gr.Column(scale=1, min_width=360, elem_classes="hero-copy-wrap"):
+                gr.HTML(
+                    f'<div class="hero-copy"><h1>&#127829; {BRAND}</h1>'
+                    f'<p>Fresh, fast, fairly priced &mdash; order in four quick steps.</p></div>'
+                )
+            with gr.Column(scale=0, min_width=300, elem_classes="hero-switch-wrap"):
+                app_view = gr.Dropdown(
+                    ["Customer Ordering", "Admin Dashboard"],
+                    value="Customer Ordering",
+                    label=None,
+                    show_label=False,
+                    container=False,
+                    filterable=False,
+                    elem_classes="view-switch",
+                )
+
+        with gr.Column(elem_id="main-tabs"):
+            with gr.Group(visible=True) as customer_panel:
                 pills = gr.HTML(step_pills(2))
 
                 with gr.Column(elem_classes="page-card"):
                     # ---------- Screen 2: Customer ----------
                     with gr.Group(visible=True) as s2:
                         with gr.Row(elem_classes="header-row"):
-                            gr.HTML("<h3>Fill customer details</h3>")
-                        s2_menu_msg = gr.HTML("" if default_menu else f'<p class="err">{default_menu_err}</p>')
-                        name_in = gr.Textbox(label="Name", placeholder="e.g. Rajan Sharma", max_lines=1)
-                        phone_in = gr.Textbox(label="Phone", placeholder="10 digits, starts 6/7/8/9", max_lines=1)
+                            gr.HTML("<h3>Enter Customer Data</h3>")
+                        s2_menu_msg = gr.HTML(
+                            "" if default_menu else f'<p class="err">{default_menu_err}</p>',
+                            visible=default_menu is None,
+                        )
+                        with gr.Row(elem_classes="customer-field-row"):
+                            with gr.Column(scale=0, min_width=260, elem_classes="customer-label-col"):
+                                gr.HTML("<div class='customer-field-label'>Customer's Name :</div>")
+                            with gr.Column(scale=1, min_width=360, elem_classes="customer-control-col"):
+                                name_in = gr.Textbox(
+                                    label="Enter Customer's Name",
+                                    show_label=False,
+                                    placeholder="Enter Customer's Name",
+                                    max_lines=1,
+                                )
+                        with gr.Row(elem_classes="customer-field-row"):
+                            with gr.Column(scale=0, min_width=260, elem_classes="customer-label-col"):
+                                gr.HTML("<div class='customer-field-label'>Customer's Phone Number :</div>")
+                            with gr.Column(scale=1, min_width=360, elem_classes="customer-control-col"):
+                                phone_in = gr.Textbox(
+                                    label="Enter Customer's Phone Number",
+                                    show_label=False,
+                                    placeholder="Enter Customer's Phone Number",
+                                    max_lines=1,
+                                )
                         s2_msg = gr.HTML("")
                         s2_next = gr.Button("Continue →", variant="primary", interactive=default_menu is not None)
 
@@ -530,27 +2219,44 @@ def build_demo() -> gr.Blocks:
                                 with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
                                     s5_back = gr.Button("", elem_classes="back-btn-custom")
                                 gr.HTML("<h3>Payment</h3>")
-                            gr.Markdown("Pick by **payment number** from the list below.")
-                            gr.HTML(render_payment_html())
-                            pay_mode = gr.Textbox(label="Enter payment mode", placeholder="1, 2, or 3", max_lines=1)
-                            
-                            with gr.Group(visible=False) as card_details:
-                                gr.Markdown("#### Secure Card Payment")
-                                gr.Textbox(label="Card Number", placeholder="0000 0000 0000 0000", max_lines=1)
-                                with gr.Row():
-                                    gr.Textbox(label="Expiry Date", placeholder="MM/YY", max_lines=1)
-                                    gr.Textbox(label="CVV", placeholder="123", type="password")
-                                    
-                            with gr.Group(visible=False) as upi_details:
-                                gr.HTML('<div style="text-align: center; margin: 10px 0;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=upi://pay?pa=slicematic@upi&pn=SliceMatic" alt="UPI QR Code" style="display: inline-block; border-radius: 8px; border: 1px solid #E5E7EB; padding: 10px; background: white;"/><p style="color: #6B7280; font-size: 13px; margin-top: 8px;">Scan using Google Pay, PhonePe, or Paytm</p></div>')
-                            
+                            with gr.Row(elem_classes="payment-grid"):
+                                with gr.Column(elem_classes="payment-left"):
+                                    gr.Markdown("Pick by **payment number** from the list below.")
+                                    gr.HTML(render_payment_html())
+                                    pay_mode = gr.Textbox(label="Enter payment mode", placeholder="1, 2, or 3", max_lines=1)
+
+                                with gr.Column(elem_classes="payment-right"):
+                                    with gr.Group(visible=False) as cash_details:
+                                        gr.Markdown("#### Cash collection")
+                                        cash_collected = gr.Textbox(label="Collected cash", placeholder="amount customer gave", max_lines=1)
+                                        cash_return = gr.HTML('<div class="pay-hint">Enter collected cash to calculate return.</div>')
+
+                                    with gr.Group(visible=False) as card_details:
+                                        gr.Markdown("#### Secure Card Payment")
+                                        gr.Textbox(label="Card Number", placeholder="0000 0000 0000 0000", max_lines=1)
+                                        with gr.Row():
+                                            gr.Textbox(label="Expiry Date", placeholder="MM/YY", max_lines=1)
+                                            gr.Textbox(label="CVV", placeholder="123", type="password")
+
+                                    with gr.Group(visible=False) as upi_details:
+                                        gr.Markdown("#### UPI Payment")
+                                        gr.HTML('<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=slicematic@upi&pn=SliceMatic" alt="UPI QR Code"/><p>Scan using Google Pay, PhonePe, or Paytm</p></div>')
+
+                                    payment_hint = gr.HTML('<div class="pay-hint">Select 1 Cash, 2 Card, or 3 UPI to continue.</div>')
+
                             s5_msg = gr.HTML("")
                             s5_pay = gr.Button("Pay & confirm order", variant="primary")
                         
-                        confirm_box = gr.HTML(visible=False)
-                        s5_new = gr.Button("Place another order", visible=False)
+                        with gr.Row(elem_classes="final-grid") as final_group:
+                            with gr.Column(elem_classes="final-left"):
+                                confirm_box = gr.HTML("")
+                            with gr.Column(elem_classes="final-actions"):
+                                s5_view_bill = gr.Button("View bill summary")
+                                final_download = gr.DownloadButton("Download bill")
+                                s5_new = gr.Button("Place another order")
+                                final_bill_box = gr.HTML("")
 
-            with gr.Tab("Admin Dashboard"):
+            with gr.Group(visible=False) as admin_panel:
                 with gr.Column(elem_classes="page-card"):
                     with gr.Group(visible=True) as admin_login_group:
                         with gr.Row(elem_classes="header-row"):
@@ -580,8 +2286,18 @@ def build_demo() -> gr.Blocks:
                             
                             with gr.Tab("Discount Settings"):
                                 gr.Markdown("### Global Discount Rate")
-                                discount_in = gr.Slider(0, 100, value=pricing.get_discount_rate() * 100, step=1, label="Discount % (applied to all orders >= 5 items)")
-                                disc_btn = gr.Button("Save Discount Rate", variant="primary")
+                                with gr.Row(elem_classes="discount-grid"):
+                                    discount_in = gr.Number(
+                                        value=pricing.get_discount_rate() * 100,
+                                        precision=0,
+                                        label="Discount %",
+                                    )
+                                    threshold_in = gr.Number(
+                                        value=pricing.get_discount_threshold(),
+                                        precision=0,
+                                        label="Minimum pizza quantity",
+                                    )
+                                disc_btn = gr.Button("Save Discount Settings", variant="primary")
                                 disc_msg = gr.HTML("")
                                 
                             with gr.Tab("Analytics") as tab_analytics:
@@ -621,6 +2337,77 @@ def build_demo() -> gr.Blocks:
         def goto(n: int):
             return [show(i + 2 == n) for i in range(4)] + [step_pills(n)]
 
+        bill_placeholder = '<div class="bill-empty">Your order summary will appear here.</div>'
+        cash_hint = '<div class="pay-hint">Enter collected cash to calculate return.</div>'
+        payment_hint_default = '<div class="pay-hint">Select 1 Cash, 2 Card, or 3 UPI to continue.</div>'
+
+        def switch_main_view(choice):
+            show_admin = choice == "Admin Dashboard"
+            if show_admin:
+                return (
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    gr.update(value=""),
+                    gr.update(value=""),
+                    *[gr.update() for _ in range(25)],
+                    *[gr.update(visible=False) for _ in screens],
+                    gr.update(value=step_pills(2)),
+                )
+            return (
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(value=""),
+                gr.update(value=""),
+                {},
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=bill_placeholder),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=cash_hint),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=True, value=payment_hint_default),
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(value="", visible=True),
+                gr.update(visible=True),
+                gr.update(value="View bill summary", visible=True),
+                gr.update(value="", visible=True),
+                gr.update(value=None, visible=True),
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(value=step_pills(2)),
+            )
+
+        app_view.change(
+            switch_main_view,
+            app_view,
+            [
+                customer_panel, admin_panel,
+                admin_login_group, admin_content_group, admin_pin, pin_msg,
+                order_state, name_in, phone_in, s2_msg, s3_msg, s5_msg, bill_box,
+                base_num, pizza_num, topping_num, qty_in, pay_mode,
+                cash_collected, cash_return, cash_details, card_details, upi_details, payment_hint,
+                final_group, s5_inputs, confirm_box, s5_new, s5_view_bill, final_bill_box, final_download,
+                *screens, pills,
+            ],
+        )
+
         def toggle_upload(mode):
             if mode == DEFAULT_MENU_MODE:
                 _save_menu_source(DEFAULT_MENU_MODE)
@@ -639,7 +2426,7 @@ def build_demo() -> gr.Blocks:
                     gr.update(value=msg),
                     gr.update(value=render_menu_compare_html(m)),
                     gr.update(value=render_menu_html(m)),
-                gr.update(value=msg),
+                gr.update(value=msg, visible=bool(msg)),
                 gr.update(interactive=can_order),
             ]
             _save_menu_source(CUSTOM_MENU_MODE)
@@ -663,7 +2450,7 @@ def build_demo() -> gr.Blocks:
                 gr.update(value=msg),
                 gr.update(value=render_menu_compare_html(m)),
                 gr.update(value=render_menu_html(m)),
-                gr.update(value="" if can_order else msg),
+                gr.update(value="" if can_order else msg, visible=not can_order),
                 gr.update(interactive=can_order),
             ]
 
@@ -697,7 +2484,7 @@ def build_demo() -> gr.Blocks:
                         gr.update(value=msg),
                         gr.update(value=render_menu_html(current_menu)),
                         gr.update(value=render_menu_compare_html(current_menu)),
-                        gr.update(value=customer_msg),
+                        gr.update(value=customer_msg, visible=bool(customer_msg)),
                         gr.update(interactive=current_menu is not None),
                     ]
                 tmpdir = tempfile.mkdtemp(prefix="slicematic_menu_")
@@ -726,7 +2513,7 @@ def build_demo() -> gr.Blocks:
                     gr.update(value=msg),
                     gr.update(value=render_menu_html(current_menu)),
                     gr.update(value=render_menu_compare_html(current_menu)),
-                    gr.update(value=customer_msg),
+                    gr.update(value=customer_msg, visible=bool(customer_msg)),
                     gr.update(interactive=current_menu is not None),
                 ]
             if mode == CUSTOM_MENU_MODE:
@@ -737,7 +2524,7 @@ def build_demo() -> gr.Blocks:
                 gr.update(value="<p style='color:#10B981;font-weight:bold;'>Menu updated successfully!</p>"),
                 gr.update(value=render_menu_html(m)),
                 gr.update(value=render_menu_diff_html(previous_menu, m)),
-                gr.update(value=""),
+                gr.update(value="", visible=False),
                 gr.update(interactive=True),
             ]
 
@@ -769,11 +2556,23 @@ def build_demo() -> gr.Blocks:
                 return gr.update(visible=False), gr.update(visible=True), gr.update(value="")
             return gr.update(visible=True), gr.update(visible=False), gr.update(value='<p class="err">Invalid PIN</p>')
         
-        def update_discount(rate):
-            pricing.set_discount_rate(rate / 100.0)
-            return f"<p style='color:#10B981;font-weight:bold;'>Discount rate updated to {rate}%</p>"
+        def update_discount(rate, threshold):
+            try:
+                rate_f = float(rate)
+                threshold_i = int(threshold)
+                if rate_f < 0 or rate_f > 100:
+                    raise ValueError("Discount % must be between 0 and 100.")
+                pricing.set_discount_rate(rate_f / 100.0)
+                pricing.set_discount_threshold(threshold_i)
+            except (TypeError, ValueError) as exc:
+                return f'<p class="err">{exc}</p>'
+            return (
+                "<p style='color:#10B981;font-weight:bold;'>"
+                f"Discount updated to {rate_f:.0f}% for orders with {threshold_i}+ pizzas."
+                "</p>"
+            )
             
-        disc_btn.click(update_discount, discount_in, disc_msg)
+        disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
         
         def refresh_analytics(f_type, f_date):
             data = analytics.get_analytics(f_type, f_date)
@@ -847,68 +2646,211 @@ def build_demo() -> gr.Blocks:
         def to_payment(order):
             order = dict(order)
             order["status"] = "payment_selected"
-            return [order] + goto(5)
+            order["bill_visible"] = False
+            return (
+                [order]
+                + goto(5)
+                + [
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(value="", visible=True),
+                    gr.update(visible=True),
+                    gr.update(value="View bill summary", visible=True),
+                    gr.update(value="", visible=True),
+                    gr.update(value=None, visible=True),
+                    gr.update(value=""),
+                    gr.update(value=""),
+                    gr.update(value=cash_hint),
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=True, value=payment_hint_default),
+                    gr.update(value=""),
+                ]
+            )
 
-        s4_next.click(to_payment, order_state, [order_state, *screens, pills])
+        s4_next.click(
+            to_payment,
+            order_state,
+            [
+                order_state, *screens, pills,
+                s5_inputs, final_group, confirm_box, s5_new, s5_view_bill,
+                final_bill_box, final_download, pay_mode, cash_collected, cash_return,
+                cash_details, card_details, upi_details, payment_hint, s5_msg,
+            ],
+        )
         s4_back.click(lambda: goto(3), None, [*screens, pills])
 
         # --- Screen 5 logic ---
+        def cash_return_html(collected_raw, order):
+            bill = (order or {}).get("bill")
+            if not bill:
+                return '<div class="pay-hint">Build an order before calculating cash return.</div>'
+            try:
+                collected = float(str(collected_raw).replace(",", "").strip())
+            except (TypeError, ValueError):
+                return '<div class="pay-hint">Enter collected cash to calculate return.</div>'
+            change = collected - bill.total
+            if change < 0:
+                return (
+                    '<div class="pay-hint warn">'
+                    f"Short by ₹{_money(abs(change))}. Collect at least ₹{_money(bill.total)}."
+                    "</div>"
+                )
+            return f'<div class="cash-return"><span>Return cash</span><b>₹{_money(change)}</b></div>'
+
         def toggle_payment_ui(mode):
             ok, mode_v = v.validate_payment(mode)
             if not ok:
-                return gr.update(visible=False), gr.update(visible=False)
-            return gr.update(visible=(mode_v == "Card")), gr.update(visible=(mode_v == "UPI"))
+                return (
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=True, value='<div class="pay-hint">Select 1 Cash, 2 Card, or 3 UPI to continue.</div>'),
+                    gr.update(value='<div class="pay-hint">Enter collected cash to calculate return.</div>'),
+                )
+            return (
+                gr.update(visible=(mode_v == "Cash")),
+                gr.update(visible=(mode_v == "Card")),
+                gr.update(visible=(mode_v == "UPI")),
+                gr.update(visible=False),
+                gr.update(value='<div class="pay-hint">Enter collected cash to calculate return.</div>'),
+            )
             
-        pay_mode.change(toggle_payment_ui, inputs=[pay_mode], outputs=[card_details, upi_details])
+        pay_mode.change(
+            toggle_payment_ui,
+            inputs=[pay_mode],
+            outputs=[cash_details, card_details, upi_details, payment_hint, cash_return],
+        )
+        cash_collected.change(cash_return_html, [cash_collected, order_state], cash_return)
         s5_back.click(lambda: goto(4), None, [*screens, pills])
 
-        def pay(mode, order):
+        def pay(mode, collected_raw, order):
+            def pay_error(message):
+                return (
+                    order,
+                    gr.update(value=message),
+                    gr.update(value="", visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(value="View bill summary", visible=True),
+                    gr.update(value="", visible=True),
+                    gr.update(value=None, visible=True),
+                    gr.update(value=step_pills(5)),
+                )
+
             ok, mode_v = v.validate_payment(mode)
             if not ok:
-                return (order, gr.update(value=f'<span class="err">{mode_v}</span>'),
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                return pay_error(f'<span class="err">{mode_v}</span>')
             bill = order.get("bill")
             if not bill:
-                return (order, gr.update(value='<span class="err">No bill found — please rebuild your order.</span>'),
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                return pay_error('<span class="err">No bill found — please rebuild your order.</span>')
             order = dict(order)
+            collected = None
+            change = None
+            if mode_v == "Cash":
+                try:
+                    collected = float(str(collected_raw).replace(",", "").strip())
+                except (TypeError, ValueError):
+                    return pay_error('<span class="err">Enter collected cash amount.</span>')
+                change = collected - bill.total
+                if change < 0:
+                    return pay_error(f'<span class="err">Collected cash is short by ₹{_money(abs(change))}.</span>')
             order["status"] = "payment_in_progress"
-            ts = persistence.append_order(
+            ts, order_no = persistence.append_order(
                 name=order["name"], phone=order["phone"], bill=bill,
                 payment_mode=mode_v, timestamp=order.get("timestamp"),
             )
-            order_no = f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((order['phone'], ts))) % 10000:04d}"
-            order.update(status="ordered", order_no=order_no, payment_mode=mode_v)
-            note = {"Cash": "Pay cash on delivery.", "Card": "Card payment confirmed.",
+            order.update(
+                status="ordered",
+                order_no=order_no,
+                order_timestamp=ts,
+                payment_mode=mode_v,
+                cash_collected=collected,
+                cash_return=change,
+                bill_visible=False,
+            )
+            receipt_path = os.path.join(tempfile.gettempdir(), f"slicematic_{order_no}_receipt.txt")
+            with open(receipt_path, "w", encoding="utf-8") as fh:
+                fh.write(receipt_text(order))
+            order["receipt_path"] = receipt_path
+            note = {"Cash": "Cash collected at counter.", "Card": "Card payment confirmed.",
                     "UPI": "UPI payment confirmed."}[mode_v]
-            html = (f'<div class="bill-card" style="text-align:center; padding: 30px;">'
+            cash_line = (
+                f'<div class="bill-row"><span>Collected cash</span><span>₹{_money(collected)}</span></div>'
+                f'<div class="bill-row"><span>Return cash</span><span>₹{_money(change)}</span></div>'
+                if mode_v == "Cash"
+                else ""
+            )
+            html = (f'<div class="bill-card confirmation-card">'
                     f'<div class="check-wrapper"><svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/><path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/></svg></div>'
                     f'<div style="font-size:24px;font-weight:800;color:#10B981;margin-top:16px">Order confirmed</div>'
-                    f'<div style="color:#6B7280;margin:8px 0 20px;font-size:15px">Order no. <b>{order_no}</b></div>'
-                    f'<div class="bl"><span>Paying via {mode_v}</span><span style="font-weight:600;color:#111827">INR {bill.total:.2f}</span></div>'
+                    f'<div style="color:#6B7280;margin:8px 0 20px;font-size:15px">Order ID <b>{order_no}</b></div>'
+                    f'<div class="bill-row"><span>Paying via {mode_v}</span><span style="font-weight:600;color:#111827">₹{_money(bill.total)}</span></div>'
+                    f'{cash_line}'
                     f'<div class="bl muted"><span>{note}</span><span></span></div>'
                     f'<div class="bl total" style="justify-content:center;border:none;padding-top:20px;margin-top:10px">'
                     f'<span>Thanks, {order["name"]}! 🍕</span></div></div>')
             return (order, gr.update(value=""), gr.update(value=html, visible=True),
-                    gr.update(visible=True), gr.update(visible=False))
+                    gr.update(visible=True), gr.update(visible=False), gr.update(visible=True),
+                    gr.update(value="View bill summary", visible=True), gr.update(value="", visible=True),
+                    gr.update(value=receipt_path, visible=True),
+                    gr.update(value=step_pills(6)))
 
-        s5_pay.click(pay, [pay_mode, order_state],
-                     [order_state, s5_msg, confirm_box, s5_new, s5_inputs])
+        s5_pay.click(pay, [pay_mode, cash_collected, order_state],
+                     [order_state, s5_msg, confirm_box, s5_new, s5_inputs, final_group,
+                      s5_view_bill, final_bill_box, final_download, pills])
+
+        def show_final_bill(order):
+            order = dict(order or {})
+            bill = order.get("bill")
+            if not bill:
+                return (
+                    order,
+                    gr.update(value="View bill summary", visible=True),
+                    gr.update(value='<span class="err">No bill found.</span>', visible=True),
+                )
+            if order.get("bill_visible"):
+                order["bill_visible"] = False
+                return (
+                    order,
+                    gr.update(value="View bill summary", visible=True),
+                    gr.update(value="", visible=True),
+                )
+            order["bill_visible"] = True
+            return (
+                order,
+                gr.update(value="Hide bill summary", visible=True),
+                gr.update(value=bill_html(bill, compact=True, order=order, show_promo=False), visible=True),
+            )
+
+        s5_view_bill.click(show_final_bill, order_state, [order_state, s5_view_bill, final_bill_box])
 
         bill_placeholder = ('<div class="bill-empty">Your order summary will appear here.</div>')
 
         def new_order():
-            return ([{}, gr.update(value=""), gr.update(value="", visible=False),
-                     gr.update(visible=False), gr.update(visible=True),
+            return ([{}, gr.update(value=""), gr.update(value="", visible=True),
+                     gr.update(visible=True), gr.update(visible=True), gr.update(visible=True),
+                     gr.update(value="View bill summary", visible=True), gr.update(value="", visible=True),
+                     gr.update(value=None, visible=True),
                      gr.update(value=""), gr.update(value=bill_placeholder),
+                     gr.update(value=""), gr.update(value=""),
                      gr.update(value=""), gr.update(value=""), gr.update(value=""), gr.update(value=""),
-                     gr.update(value="")]
+                     gr.update(value=""),
+                     gr.update(value=""),
+                     gr.update(value='<div class="pay-hint">Enter collected cash to calculate return.</div>'),
+                     gr.update(visible=False), gr.update(visible=False), gr.update(visible=False),
+                     gr.update(visible=True, value='<div class="pay-hint">Select 1 Cash, 2 Card, or 3 UPI to continue.</div>')]
                     + goto(2))
 
         s5_new.click(
             new_order, None,
-            [order_state, s5_msg, confirm_box, s5_new, s5_inputs,
-             s3_msg, bill_box, base_num, pizza_num, topping_num, qty_in, pay_mode, *screens, pills],
+             [order_state, s5_msg, confirm_box, s5_new, s5_inputs,
+             final_group, s5_view_bill, final_bill_box, final_download,
+             s3_msg, bill_box, name_in, phone_in, base_num, pizza_num, topping_num, qty_in, pay_mode,
+             cash_collected, cash_return, cash_details, card_details, upi_details, payment_hint,
+             *screens, pills],
         )
 
     return demo

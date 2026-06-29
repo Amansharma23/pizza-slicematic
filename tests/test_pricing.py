@@ -55,3 +55,14 @@ def test_all_money_two_decimals():
     bill = pricing.compute_bill(base, pizza, topping, 7)
     for value in (bill.unit_price, bill.subtotal, bill.discount, bill.taxable, bill.gst, bill.total):
         assert round(value, 2) == value
+
+
+def test_discount_threshold_is_configurable():
+    base, pizza, topping = _items()
+    original = pricing.get_discount_threshold()
+    try:
+        pricing.set_discount_threshold(3)
+        assert pricing.compute_bill(base, pizza, topping, 3).discount > 0
+        assert pricing.compute_bill(base, pizza, topping, 2).discount == 0.0
+    finally:
+        pricing.set_discount_threshold(original)

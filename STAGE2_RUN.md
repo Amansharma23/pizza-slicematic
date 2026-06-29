@@ -40,6 +40,12 @@ http://127.0.0.1:7860/
 - Order log: `database/orders_log.txt`
 - Core logic: `core/menu.py`, `core/validation.py`, `core/pricing.py`, `core/persistence.py`
 
+Completed orders are stored as:
+
+```text
+order_id | timestamp | name | phone | base | pizza | topping | unit_price | quantity | subtotal | discount | gst | total | payment_mode
+```
+
 ## Admin Menu Behavior
 
 - `Use SliceMatic default menu` loads from `menu_data/`.
