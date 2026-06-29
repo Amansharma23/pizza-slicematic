@@ -29,6 +29,7 @@ if os.environ.get("SPACE_ID"):
 else:
     DATABASE_DIR = os.environ.get("DATABASE_DIR", "database")
 CUSTOM_MENU_DIR = os.path.join(DATABASE_DIR, "menu")
+UPLOAD_STAGING_DIR = os.path.join(DATABASE_DIR, "menu_uploads")
 MENU_SOURCE_FILE = os.path.join(DATABASE_DIR, "menu_source.txt")
 BRAND = "SliceMatic"
 DEFAULT_MENU_MODE = "Use SliceMatic default menu"
@@ -166,6 +167,31 @@ def _persist_menu(menu) -> None:
     _write_menu_file(os.path.join(CUSTOM_MENU_DIR, menu_mod.TOPPING_FILE), menu.toppings)
 
 
+def _extract_upload_path(file_obj) -> str | None:
+    if not file_obj:
+        return None
+    if isinstance(file_obj, (list, tuple)):
+        file_obj = file_obj[0] if file_obj else None
+    if not file_obj:
+        return None
+    if isinstance(file_obj, dict):
+        return file_obj.get("path") or file_obj.get("name")
+    return getattr(file_obj, "path", None) or getattr(file_obj, "name", None) or str(file_obj)
+
+
+def _stage_menu_upload(file_obj, dest_filename: str) -> tuple[str | None, str]:
+    src_path = _extract_upload_path(file_obj)
+    if not src_path or not os.path.isfile(src_path):
+        return None, "Upload failed: file was not available. Please choose the file again."
+    os.makedirs(UPLOAD_STAGING_DIR, exist_ok=True)
+    staged_path = os.path.join(UPLOAD_STAGING_DIR, dest_filename)
+    try:
+        shutil.copyfile(src_path, staged_path)
+    except OSError as exc:
+        return None, f"Upload failed: could not save file ({exc})."
+    return staged_path, f"✓ {os.path.basename(src_path)}"
+
+
 def _save_menu_source(mode: str) -> None:
     os.makedirs(DATABASE_DIR, exist_ok=True)
     with open(MENU_SOURCE_FILE, "w", encoding="utf-8") as fh:
@@ -185,6 +211,13 @@ def _load_custom_menu():
     if not _has_complete_menu_files(CUSTOM_MENU_DIR):
         raise MenuError("No updated menu has been saved yet.")
     return menu_mod.load_menu(CUSTOM_MENU_DIR)
+
+
+def _load_active_menu():
+    mode = _load_menu_source()
+    if mode == CUSTOM_MENU_MODE:
+        return _load_custom_menu(), CUSTOM_MENU_MODE, ""
+    return menu_mod.load_menu(MENU_DIR), DEFAULT_MENU_MODE, ""
 
 
 def bill_html(bill) -> str:
@@ -2147,20 +2180,15 @@ def df_to_html(df, title=None, scrollable=False):
 # --------------------------------------------------------------------------- #
 
 def build_demo() -> gr.Blocks:
-    saved_menu_mode = _load_menu_source()
     try:
-        if saved_menu_mode == CUSTOM_MENU_MODE:
-            default_menu = _load_custom_menu()
-        else:
-            default_menu = menu_mod.load_menu(MENU_DIR)
-        default_menu_err = ""
-        initial_menu_mode = saved_menu_mode
-    except MenuError:
+        default_menu, initial_menu_mode, default_menu_err = _load_active_menu()
+    except MenuError as active_exc:
         try:
             default_menu = menu_mod.load_menu(MENU_DIR)
-            default_menu_err = ""
+            default_menu_err = (
+                f"{active_exc} Showing SliceMatic default menu until a valid custom menu is saved."
+            )
             initial_menu_mode = DEFAULT_MENU_MODE
-            _save_menu_source(DEFAULT_MENU_MODE)
         except MenuError as fallback_exc:
             default_menu = None
             default_menu_err = str(fallback_exc)
@@ -2319,11 +2347,29 @@ def build_demo() -> gr.Blocks:
                                     value=initial_menu_mode, label="Menu source",
                                 )
                                 with gr.Group(visible=upload_mode_initial) as upload_group:
-                                    up_base = gr.UploadButton("⬆  Upload Base menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
+                                    up_base = gr.UploadButton(
+                                        "⬆  Upload Base menu  (.txt)",
+                                        type="filepath",
+                                        file_count="single",
+                                        file_types=[".txt"],
+                                        elem_classes="up-btn",
+                                    )
                                     up_base_status = gr.Markdown("", elem_classes="up-status")
-                                    up_pizza = gr.UploadButton("⬆  Upload Pizza menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
+                                    up_pizza = gr.UploadButton(
+                                        "⬆  Upload Pizza menu  (.txt)",
+                                        type="filepath",
+                                        file_count="single",
+                                        file_types=[".txt"],
+                                        elem_classes="up-btn",
+                                    )
                                     up_pizza_status = gr.Markdown("", elem_classes="up-status")
-                                    up_topping = gr.UploadButton("⬆  Upload Toppings menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
+                                    up_topping = gr.UploadButton(
+                                        "⬆  Upload Toppings menu  (.txt)",
+                                        type="filepath",
+                                        file_count="single",
+                                        file_types=[".txt"],
+                                        elem_classes="up-btn",
+                                    )
                                     up_topping_status = gr.Markdown("", elem_classes="up-status")
                                 s1_msg = gr.HTML("" if default_menu else f'<p class="err">{default_menu_err}</p>')
                                 admin_menu_preview = gr.HTML(render_menu_compare_html(default_menu))
@@ -2524,13 +2570,62 @@ def build_demo() -> gr.Blocks:
             [menu_state, upload_group, s1_next, s1_msg, admin_menu_preview, menu_list, s2_menu_msg, s2_next],
         )
 
-        def _took(f):
-            path = f.name if hasattr(f, "name") else f
-            return path, f"✓ {os.path.basename(path)}"
+        def refresh_saved_menu():
+            saved_mode = _load_menu_source()
+            upload_visible = saved_mode == CUSTOM_MENU_MODE
+            try:
+                if saved_mode == CUSTOM_MENU_MODE:
+                    m = _load_custom_menu()
+                else:
+                    m = menu_mod.load_menu(MENU_DIR)
+                msg = ""
+                customer_msg = ""
+                can_order = True
+            except MenuError as exc:
+                try:
+                    m = menu_mod.load_menu(MENU_DIR)
+                    safe_err = html.escape(str(exc))
+                    msg = (
+                        f"<p class='err'>{safe_err} "
+                        "Showing SliceMatic default menu until a valid custom menu is saved.</p>"
+                    )
+                    customer_msg = msg
+                    can_order = True
+                except MenuError as fallback_exc:
+                    m = None
+                    msg = f'<p class="err">{html.escape(str(fallback_exc))}</p>'
+                    customer_msg = msg
+                    can_order = False
+            return [
+                m,
+                gr.update(value=saved_mode),
+                gr.update(visible=upload_visible),
+                gr.update(visible=upload_visible),
+                gr.update(value=msg),
+                gr.update(value=render_menu_compare_html(m)),
+                gr.update(value=render_menu_html(m)),
+                gr.update(value=customer_msg, visible=bool(customer_msg)),
+                gr.update(interactive=can_order),
+            ]
 
-        up_base.upload(_took, up_base, [up_base_fp, up_base_status])
-        up_pizza.upload(_took, up_pizza, [up_pizza_fp, up_pizza_status])
-        up_topping.upload(_took, up_topping, [up_topping_fp, up_topping_status])
+        demo.load(
+            refresh_saved_menu,
+            None,
+            [menu_state, menu_mode, upload_group, s1_next, s1_msg, admin_menu_preview, menu_list, s2_menu_msg, s2_next],
+        )
+
+        def _took_base(f):
+            return _stage_menu_upload(f, menu_mod.BASE_FILE)
+
+        def _took_pizza(f):
+            return _stage_menu_upload(f, menu_mod.PIZZA_FILE)
+
+        def _took_topping(f):
+            return _stage_menu_upload(f, menu_mod.TOPPING_FILE)
+
+        up_base.upload(_took_base, up_base, [up_base_fp, up_base_status])
+        up_pizza.upload(_took_pizza, up_pizza, [up_pizza_fp, up_pizza_status])
+        up_topping.upload(_took_topping, up_topping, [up_topping_fp, up_topping_status])
 
         def update_menu(mode, fb, fp, ft, current_menu):
             previous_menu = current_menu
@@ -2562,7 +2657,21 @@ def build_demo() -> gr.Blocks:
                 for dest, src in uploads.items():
                     if not src:
                         continue
-                    src_path = src.name if hasattr(src, "name") else src
+                    src_path = _extract_upload_path(src)
+                    if not src_path or not os.path.isfile(src_path):
+                        msg = (
+                            '<p class="err">Uploaded menu file is no longer available. '
+                            'Please upload it again and click Update Menu.</p>'
+                        )
+                        customer_msg = "" if current_menu else msg
+                        return [
+                            current_menu,
+                            gr.update(value=msg),
+                            gr.update(value=render_menu_html(current_menu)),
+                            gr.update(value=render_menu_compare_html(current_menu)),
+                            gr.update(value=customer_msg, visible=bool(customer_msg)),
+                            gr.update(interactive=current_menu is not None),
+                        ]
                     shutil.copyfile(src_path, os.path.join(tmpdir, dest))
                 load_dir = tmpdir
             else:

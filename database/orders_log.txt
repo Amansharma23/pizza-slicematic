@@ -116,3 +116,5 @@ SM-000057 | 2026-06-29 17:53:53 | Bill Toggle Test | 9876543210 | Thin Crust | M
 SM-000058 | 2026-06-29 17:57:13 | Amit Jackson | 8377306334 | Thin Crust | Chicago Deep Dish | Button Mushrooms | 547.00 | 4 | 2188.00 | 0.00 | 393.84 | 2581.84 | UPI
 
 SM-000059 | 2026-06-29 20:53:46 | Joshua Harris | 6368045829 | Thin Crust | Chicago Deep Dish | Button Mushrooms | 547.00 | 4 | 2188.00 | 0.00 | 393.84 | 2581.84 | Cash
+
+SM-000060 | 2026-06-29 23:10:14 | Joseph Clark | 9494148662 | Multigrain | Farm House | Black Olives | 537.00 | 3 | 1611.00 | 0.00 | 289.98 | 1900.98 | Card
