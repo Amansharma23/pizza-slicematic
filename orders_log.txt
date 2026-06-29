@@ -19,3 +19,5 @@
 2026-06-28 21:15:53 | Mouli | 8790312333 | Multigrain | Farm House | Sun-Dried Tomatoes | 547.00 | 7 | 3829.00 | 1531.60 | 413.53 | 2710.93 | UPI
 
 2026-06-28 21:37:20 | Mouli | 8790312333 | Cheese Burst | California Veggie | Jalapenos | 607.00 | 2 | 1214.00 | 0.00 | 218.52 | 1432.52 | UPI
+
+2026-06-29 07:00:26 | Aman Sharma | 8336831234 | Thick Crust | Farm House | Caramelised Onions | 547.00 | 3 | 1641.00 | 0.00 | 295.38 | 1936.38 | Cash
