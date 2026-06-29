@@ -27,7 +27,8 @@ def parse_menu_lines(lines: list[str]) -> list[MenuItem]:
 
     A line is valid only if it has at least 3 ``;``-separated fields, a
     non-empty id and name, and a price that parses as a number. Everything
-    else (blank lines, comments, missing price, non-numeric price) is skipped.
+    else (blank lines, comments, missing price, non-numeric price, or columns
+    consisting only of special characters) is skipped.
     """
     items: list[MenuItem] = []
     seen_ids: set[str] = set()
@@ -40,6 +41,11 @@ def parse_menu_lines(lines: list[str]) -> list[MenuItem]:
             continue  # missing field(s)
         item_id, name, price_str = parts[0], parts[1], parts[2]
         if not item_id or not name or not price_str:
+            continue
+        # Skip if any column consists only of special characters (no alphanumeric characters)
+        if (not any(c.isalnum() for c in item_id)) or \
+           (not any(c.isalnum() for c in name)) or \
+           (not any(c.isalnum() for c in price_str)):
             continue
         try:
             price = float(price_str)
