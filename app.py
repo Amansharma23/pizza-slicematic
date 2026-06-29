@@ -24,7 +24,10 @@ from core.menu import MenuError
 from api.routes import router as api_router
 
 MENU_DIR = os.environ.get("MENU_DIR", "menu_data")
-DATABASE_DIR = os.environ.get("DATABASE_DIR", "database")
+if os.environ.get("SPACE_ID"):
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "/data")
+else:
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "database")
 CUSTOM_MENU_DIR = os.path.join(DATABASE_DIR, "menu")
 MENU_SOURCE_FILE = os.path.join(DATABASE_DIR, "menu_source.txt")
 BRAND = "SliceMatic"
