@@ -89,6 +89,9 @@ def validate_payment(raw) -> tuple[bool, str]:
     text = str(raw).strip()
     if text in PAYMENT_MODES:
         return True, PAYMENT_MODES[text]
+    for key, mode in PAYMENT_MODES.items():
+        if text.lower() == f"{key} {mode}".lower():
+            return True, mode
     for mode in PAYMENT_MODES.values():
         if text.lower() == mode.lower():
             return True, mode

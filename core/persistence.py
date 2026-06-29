@@ -1,4 +1,4 @@
-"""Append completed orders to orders_log.txt in the graded, parseable format.
+"""Append completed orders to database/orders_log.txt in the parseable format.
 
 One order per block, pipe-separated fields within a single line, a blank line
 between orders (NFR-4 / FR-8.3). Field order is fixed:
@@ -17,7 +17,7 @@ from core.models import Bill
 if os.environ.get("SPACE_ID"):
     LOG_FILE = "/data/orders_log.txt"
 else:
-    LOG_FILE = "orders_log.txt"
+    LOG_FILE = os.path.join("database", "orders_log.txt")
 SEP = " | "
 
 FIELD_ORDER = [
@@ -85,6 +85,9 @@ def append_order(
         payment_mode=payment_mode,
     )
     # One order per block + a blank line between orders.
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     needs_gap = os.path.isfile(path) and os.path.getsize(path) > 0
     with open(path, "a", encoding="utf-8") as fh:
         if needs_gap:

@@ -94,7 +94,7 @@ Expected response:
 
 ## Local Runtime Notes
 
-- Local orders are appended to `orders_log.txt`.
+- Local orders are appended to `database/orders_log.txt`.
 - Menu files are loaded from `menu_data/`.
 - Set `PORT` to override the default port:
 

@@ -9,6 +9,7 @@ over HTTP. See CLAUDE.md "Process model & API wiring".
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from datetime import datetime
 
@@ -22,7 +23,12 @@ from core.menu import MenuError
 from api.routes import router as api_router
 
 MENU_DIR = os.environ.get("MENU_DIR", "menu_data")
+DATABASE_DIR = os.environ.get("DATABASE_DIR", "database")
+CUSTOM_MENU_DIR = os.path.join(DATABASE_DIR, "menu")
+MENU_SOURCE_FILE = os.path.join(DATABASE_DIR, "menu_source.txt")
 BRAND = "SliceMatic"
+DEFAULT_MENU_MODE = "Use SliceMatic default menu"
+CUSTOM_MENU_MODE = "Upload my own menu files"
 
 # --------------------------------------------------------------------------- #
 # Rendering helpers (shared by UI + API)
@@ -48,6 +54,133 @@ def render_menu_html(menu) -> str:
         + block("Topping", menu.toppings)
         + "</div>"
     )
+
+
+def render_menu_compare_html(previous_menu, new_menu=None) -> str:
+    current = render_menu_html(previous_menu) or '<p class="bill-empty">No menu loaded.</p>'
+    if new_menu is None:
+        return f"<h4>Current menu</h4>{current}"
+    updated = render_menu_html(new_menu) or '<p class="bill-empty">No menu loaded.</p>'
+    return (
+        '<div class="df-row" style="align-items:flex-start;">'
+        f'<div style="flex:1;min-width:280px;"><h4>Previous menu</h4>{current}</div>'
+        f'<div style="flex:1;min-width:280px;"><h4>New menu</h4>{updated}</div>'
+        '</div>'
+    )
+
+
+def _item_signature(item) -> tuple[str, str, float]:
+    return (item.id, item.name, item.price)
+
+
+def _changed_ids(previous_items, new_items) -> set[str]:
+    old = {item.id: _item_signature(item) for item in previous_items}
+    changed = set()
+    for item in new_items:
+        if old.get(item.id) != _item_signature(item):
+            changed.add(item.id)
+    return changed
+
+
+def render_menu_diff_html(previous_menu, new_menu) -> str:
+    def previous_block(title: str, old_items, new_items) -> str:
+        new_by_id = {item.id: _item_signature(item) for item in new_items}
+        removed = {item.id for item in old_items if item.id not in new_by_id}
+        rows = "".join(
+            f'<div class="ml-row" style="{"background:#FEF2F2;border:1px solid #DC2626;" if it.id in removed else ""}">'
+            f'<span class="ml-num">{i + 1}</span>'
+            f'<span class="ml-name">{it.name}</span>'
+            f'<span class="ml-price">₹{it.price:,.0f}</span></div>'
+            for i, it in enumerate(old_items)
+        )
+        return f'<div class="ml-cat"><div class="ml-cat-title">{title}</div>{rows}</div>'
+
+    def new_block(title: str, old_items, new_items) -> str:
+        changed = _changed_ids(old_items, new_items)
+        rows = "".join(
+            f'<div class="ml-row" style="{"background:#ECFDF5;border:1px solid #10B981;" if it.id in changed else ""}">'
+            f'<span class="ml-num">{i + 1}</span>'
+            f'<span class="ml-name">{it.name}</span>'
+            f'<span class="ml-price">₹{it.price:,.0f}</span></div>'
+            for i, it in enumerate(new_items)
+        )
+        return f'<div class="ml-cat"><div class="ml-cat-title">{title}</div>{rows}</div>'
+
+    previous = (
+        '<div class="menu-list">'
+        + previous_block("Base", previous_menu.bases if previous_menu else [], new_menu.bases)
+        + previous_block("Pizza", previous_menu.pizzas if previous_menu else [], new_menu.pizzas)
+        + previous_block("Topping", previous_menu.toppings if previous_menu else [], new_menu.toppings)
+        + "</div>"
+    )
+    updated = (
+        '<div class="menu-list">'
+        + new_block("Base", previous_menu.bases if previous_menu else [], new_menu.bases)
+        + new_block("Pizza", previous_menu.pizzas if previous_menu else [], new_menu.pizzas)
+        + new_block("Topping", previous_menu.toppings if previous_menu else [], new_menu.toppings)
+        + "</div>"
+    )
+    return (
+        '<div class="df-row" style="align-items:flex-start;">'
+        f'<div style="flex:1;min-width:280px;"><h4>Previous menu</h4>{previous}</div>'
+        f'<div style="flex:1;min-width:280px;"><h4>New menu</h4>{updated}</div>'
+        '</div>'
+    )
+
+
+def render_payment_html() -> str:
+    rows = "".join(
+        f'<div class="ml-row"><span class="ml-num">{num}</span>'
+        f'<span class="ml-name">{mode}</span></div>'
+        for num, mode in (("1", "Cash"), ("2", "Card"), ("3", "UPI"))
+    )
+    return f'<div class="menu-list"><div class="ml-cat"><div class="ml-cat-title">Payment</div>{rows}</div></div>'
+
+
+def _menu_file_paths(menu_dir: str) -> dict[str, str]:
+    return {
+        menu_mod.BASE_FILE: os.path.join(menu_dir, menu_mod.BASE_FILE),
+        menu_mod.PIZZA_FILE: os.path.join(menu_dir, menu_mod.PIZZA_FILE),
+        menu_mod.TOPPING_FILE: os.path.join(menu_dir, menu_mod.TOPPING_FILE),
+    }
+
+
+def _has_complete_menu_files(menu_dir: str) -> bool:
+    return all(os.path.isfile(path) for path in _menu_file_paths(menu_dir).values())
+
+
+def _write_menu_file(path: str, items) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        for item in items:
+            fh.write(f"{item.id};{item.name};{item.price:.2f}\n")
+
+
+def _persist_menu(menu) -> None:
+    os.makedirs(CUSTOM_MENU_DIR, exist_ok=True)
+    _write_menu_file(os.path.join(CUSTOM_MENU_DIR, menu_mod.BASE_FILE), menu.bases)
+    _write_menu_file(os.path.join(CUSTOM_MENU_DIR, menu_mod.PIZZA_FILE), menu.pizzas)
+    _write_menu_file(os.path.join(CUSTOM_MENU_DIR, menu_mod.TOPPING_FILE), menu.toppings)
+
+
+def _save_menu_source(mode: str) -> None:
+    os.makedirs(DATABASE_DIR, exist_ok=True)
+    with open(MENU_SOURCE_FILE, "w", encoding="utf-8") as fh:
+        fh.write(mode)
+
+
+def _load_menu_source() -> str:
+    try:
+        with open(MENU_SOURCE_FILE, "r", encoding="utf-8") as fh:
+            mode = fh.read().strip()
+    except OSError:
+        return DEFAULT_MENU_MODE
+    return mode if mode in {DEFAULT_MENU_MODE, CUSTOM_MENU_MODE} else DEFAULT_MENU_MODE
+
+
+def _load_custom_menu():
+    if not _has_complete_menu_files(CUSTOM_MENU_DIR):
+        raise MenuError("No updated menu has been saved yet.")
+    return menu_mod.load_menu(CUSTOM_MENU_DIR)
 
 
 def bill_html(bill) -> str:
@@ -315,12 +448,26 @@ def df_to_html(df, title=None, scrollable=False):
 # --------------------------------------------------------------------------- #
 
 def build_demo() -> gr.Blocks:
+    saved_menu_mode = _load_menu_source()
     try:
-        default_menu = menu_mod.load_menu(MENU_DIR)
+        if saved_menu_mode == CUSTOM_MENU_MODE:
+            default_menu = _load_custom_menu()
+        else:
+            default_menu = menu_mod.load_menu(MENU_DIR)
         default_menu_err = ""
-    except MenuError as exc:
-        default_menu = None
-        default_menu_err = str(exc)
+        initial_menu_mode = saved_menu_mode
+    except MenuError:
+        try:
+            default_menu = menu_mod.load_menu(MENU_DIR)
+            default_menu_err = ""
+            initial_menu_mode = DEFAULT_MENU_MODE
+            _save_menu_source(DEFAULT_MENU_MODE)
+        except MenuError as fallback_exc:
+            default_menu = None
+            default_menu_err = str(fallback_exc)
+            initial_menu_mode = DEFAULT_MENU_MODE
+
+    upload_mode_initial = initial_menu_mode == CUSTOM_MENU_MODE
 
     show = lambda visible: gr.update(visible=visible)
 
@@ -343,10 +490,11 @@ def build_demo() -> gr.Blocks:
                     with gr.Group(visible=True) as s2:
                         with gr.Row(elem_classes="header-row"):
                             gr.HTML("<h3>Fill customer details</h3>")
+                        s2_menu_msg = gr.HTML("" if default_menu else f'<p class="err">{default_menu_err}</p>')
                         name_in = gr.Textbox(label="Name", placeholder="e.g. Rajan Sharma", max_lines=1)
                         phone_in = gr.Textbox(label="Phone", placeholder="10 digits, starts 6/7/8/9", max_lines=1)
                         s2_msg = gr.HTML("")
-                        s2_next = gr.Button("Continue →", variant="primary")
+                        s2_next = gr.Button("Continue →", variant="primary", interactive=default_menu is not None)
 
                     # ---------- Screen 3: Customize ----------
                     with gr.Group(visible=False) as s3:
@@ -382,7 +530,9 @@ def build_demo() -> gr.Blocks:
                                 with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
                                     s5_back = gr.Button("", elem_classes="back-btn-custom")
                                 gr.HTML("<h3>Payment</h3>")
-                            pay_mode = gr.Radio(["Cash", "Card", "UPI"], label="Payment mode", value="Cash")
+                            gr.Markdown("Pick by **payment number** from the list below.")
+                            gr.HTML(render_payment_html())
+                            pay_mode = gr.Textbox(label="Enter payment mode", placeholder="1, 2, or 3", max_lines=1)
                             
                             with gr.Group(visible=False) as card_details:
                                 gr.Markdown("#### Secure Card Payment")
@@ -414,10 +564,10 @@ def build_demo() -> gr.Blocks:
                             with gr.Tab("Menu Configuration"):
                                 gr.Markdown("### Choose your menu")
                                 menu_mode = gr.Radio(
-                                    ["Use SliceMatic default menu", "Upload my own menu files"],
-                                    value="Use SliceMatic default menu", label="Menu source",
+                                    [DEFAULT_MENU_MODE, CUSTOM_MENU_MODE],
+                                    value=initial_menu_mode, label="Menu source",
                                 )
-                                with gr.Group(visible=False) as upload_group:
+                                with gr.Group(visible=upload_mode_initial) as upload_group:
                                     up_base = gr.UploadButton("⬆  Upload Base menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
                                     up_base_status = gr.Markdown("", elem_classes="up-status")
                                     up_pizza = gr.UploadButton("⬆  Upload Pizza menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
@@ -425,7 +575,8 @@ def build_demo() -> gr.Blocks:
                                     up_topping = gr.UploadButton("⬆  Upload Toppings menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
                                     up_topping_status = gr.Markdown("", elem_classes="up-status")
                                 s1_msg = gr.HTML("" if default_menu else f'<p class="err">{default_menu_err}</p>')
-                                s1_next = gr.Button("Update Menu", variant="primary")
+                                admin_menu_preview = gr.HTML(render_menu_compare_html(default_menu))
+                                s1_next = gr.Button("Update Menu", variant="primary", visible=upload_mode_initial)
                             
                             with gr.Tab("Discount Settings"):
                                 gr.Markdown("### Global Discount Rate")
@@ -471,10 +622,56 @@ def build_demo() -> gr.Blocks:
             return [show(i + 2 == n) for i in range(4)] + [step_pills(n)]
 
         def toggle_upload(mode):
-            up = mode == "Upload my own menu files"
-            return gr.update(visible=up)
+            if mode == DEFAULT_MENU_MODE:
+                _save_menu_source(DEFAULT_MENU_MODE)
+                try:
+                    m = menu_mod.load_menu(MENU_DIR)
+                    msg = ""
+                    can_order = True
+                except MenuError as exc:
+                    m = None
+                    msg = f'<p class="err">{exc}</p>'
+                    can_order = False
+                return [
+                    m,
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(value=msg),
+                    gr.update(value=render_menu_compare_html(m)),
+                    gr.update(value=render_menu_html(m)),
+                gr.update(value=msg),
+                gr.update(interactive=can_order),
+            ]
+            _save_menu_source(CUSTOM_MENU_MODE)
+            try:
+                m = _load_custom_menu()
+                msg = ""
+                can_order = True
+            except MenuError:
+                try:
+                    m = menu_mod.load_menu(MENU_DIR)
+                    msg = "<p class='err'>No updated menu saved yet. Upload one or more menu files and click Update Menu.</p>"
+                    can_order = True
+                except MenuError as exc:
+                    m = None
+                    msg = f'<p class="err">{exc}</p>'
+                    can_order = False
+            return [
+                m,
+                gr.update(visible=True),
+                gr.update(visible=True),
+                gr.update(value=msg),
+                gr.update(value=render_menu_compare_html(m)),
+                gr.update(value=render_menu_html(m)),
+                gr.update(value="" if can_order else msg),
+                gr.update(interactive=can_order),
+            ]
 
-        menu_mode.change(toggle_upload, menu_mode, [upload_group])
+        menu_mode.change(
+            toggle_upload,
+            menu_mode,
+            [menu_state, upload_group, s1_next, s1_msg, admin_menu_preview, menu_list, s2_menu_msg, s2_next],
+        )
 
         def _took(f):
             path = f.name if hasattr(f, "name") else f
@@ -485,18 +682,37 @@ def build_demo() -> gr.Blocks:
         up_topping.upload(_took, up_topping, [up_topping_fp, up_topping_status])
 
         def update_menu(mode, fb, fp, ft, current_menu):
-            if mode == "Upload my own menu files":
-                missing = [n for n, f in (("Base", fb), ("Pizza", fp), ("Toppings", ft)) if not f]
-                if missing:
-                    msg = f'<p class="err">Please upload all three files. Missing: {", ".join(missing)}.</p>'
-                    return [current_menu, gr.update(value=msg), gr.update(value=render_menu_html(current_menu))]
+            previous_menu = current_menu
+            if mode == CUSTOM_MENU_MODE:
+                uploads = {
+                    menu_mod.BASE_FILE: fb,
+                    menu_mod.PIZZA_FILE: fp,
+                    menu_mod.TOPPING_FILE: ft,
+                }
+                if not any(uploads.values()):
+                    msg = '<p class="err">Upload at least one menu file to update, or choose the default menu.</p>'
+                    customer_msg = "" if current_menu else msg
+                    return [
+                        current_menu,
+                        gr.update(value=msg),
+                        gr.update(value=render_menu_html(current_menu)),
+                        gr.update(value=render_menu_compare_html(current_menu)),
+                        gr.update(value=customer_msg),
+                        gr.update(interactive=current_menu is not None),
+                    ]
                 tmpdir = tempfile.mkdtemp(prefix="slicematic_menu_")
-                for src, dest in ((fb, menu_mod.BASE_FILE), (fp, menu_mod.PIZZA_FILE), (ft, menu_mod.TOPPING_FILE)):
+                if current_menu:
+                    _write_menu_file(os.path.join(tmpdir, menu_mod.BASE_FILE), current_menu.bases)
+                    _write_menu_file(os.path.join(tmpdir, menu_mod.PIZZA_FILE), current_menu.pizzas)
+                    _write_menu_file(os.path.join(tmpdir, menu_mod.TOPPING_FILE), current_menu.toppings)
+                else:
+                    for filename, src_path in _menu_file_paths(MENU_DIR).items():
+                        shutil.copyfile(src_path, os.path.join(tmpdir, filename))
+                for dest, src in uploads.items():
+                    if not src:
+                        continue
                     src_path = src.name if hasattr(src, "name") else src
-                    with open(src_path, "r", encoding="utf-8", errors="replace") as r:
-                        data = r.read()
-                    with open(os.path.join(tmpdir, dest), "w", encoding="utf-8") as w:
-                        w.write(data)
+                    shutil.copyfile(src_path, os.path.join(tmpdir, dest))
                 load_dir = tmpdir
             else:
                 load_dir = MENU_DIR
@@ -504,14 +720,35 @@ def build_demo() -> gr.Blocks:
                 m = menu_mod.load_menu(load_dir)
             except MenuError as exc:
                 msg = f'<p class="err">{exc}</p>'
-                return [current_menu, gr.update(value=msg), gr.update(value=render_menu_html(current_menu))]
-            return [m, gr.update(value="<p style='color:#10B981;font-weight:bold;'>Menu updated successfully!</p>"), gr.update(value=render_menu_html(m))]
+                customer_msg = "" if current_menu else msg
+                return [
+                    current_menu,
+                    gr.update(value=msg),
+                    gr.update(value=render_menu_html(current_menu)),
+                    gr.update(value=render_menu_compare_html(current_menu)),
+                    gr.update(value=customer_msg),
+                    gr.update(interactive=current_menu is not None),
+                ]
+            if mode == CUSTOM_MENU_MODE:
+                _persist_menu(m)
+                _save_menu_source(CUSTOM_MENU_MODE)
+            return [
+                m,
+                gr.update(value="<p style='color:#10B981;font-weight:bold;'>Menu updated successfully!</p>"),
+                gr.update(value=render_menu_html(m)),
+                gr.update(value=render_menu_diff_html(previous_menu, m)),
+                gr.update(value=""),
+                gr.update(interactive=True),
+            ]
 
         admin_menu_inputs = [menu_mode, up_base_fp, up_pizza_fp, up_topping_fp, menu_state]
-        s1_next.click(update_menu, admin_menu_inputs, [menu_state, s1_msg, menu_list])
+        s1_next.click(update_menu, admin_menu_inputs, [menu_state, s1_msg, menu_list, admin_menu_preview, s2_menu_msg, s2_next])
 
         # --- Screen 2 logic ---
-        def submit_customer(name, phone, order):
+        def submit_customer(name, phone, order, m):
+            if not m:
+                msg = '<span class="err">Menu not loaded. Please ask admin to upload valid Base, Pizza, and Topping menu files.</span>'
+                return [order, gr.update(value=msg)] + goto(2)
             ok_n, name_v = v.validate_name(name)
             ok_p, phone_v = v.validate_phone(phone)
             if not (ok_n and ok_p):
@@ -523,7 +760,7 @@ def build_demo() -> gr.Blocks:
                          timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             return [order, gr.update(value="")] + goto(3)
 
-        s2_next.click(submit_customer, [name_in, phone_in, order_state],
+        s2_next.click(submit_customer, [name_in, phone_in, order_state, menu_state],
                       [order_state, s2_msg, *screens, pills])
         
         # --- Admin Logic ---
@@ -617,9 +854,13 @@ def build_demo() -> gr.Blocks:
 
         # --- Screen 5 logic ---
         def toggle_payment_ui(mode):
-            return gr.update(visible=(mode == "Card")), gr.update(visible=(mode == "UPI"))
+            ok, mode_v = v.validate_payment(mode)
+            if not ok:
+                return gr.update(visible=False), gr.update(visible=False)
+            return gr.update(visible=(mode_v == "Card")), gr.update(visible=(mode_v == "UPI"))
             
         pay_mode.change(toggle_payment_ui, inputs=[pay_mode], outputs=[card_details, upi_details])
+        s5_back.click(lambda: goto(4), None, [*screens, pills])
 
         def pay(mode, order):
             ok, mode_v = v.validate_payment(mode)
@@ -660,13 +901,14 @@ def build_demo() -> gr.Blocks:
             return ([{}, gr.update(value=""), gr.update(value="", visible=False),
                      gr.update(visible=False), gr.update(visible=True),
                      gr.update(value=""), gr.update(value=bill_placeholder),
-                     gr.update(value=""), gr.update(value=""), gr.update(value=""), gr.update(value="")]
+                     gr.update(value=""), gr.update(value=""), gr.update(value=""), gr.update(value=""),
+                     gr.update(value="")]
                     + goto(2))
 
         s5_new.click(
             new_order, None,
             [order_state, s5_msg, confirm_box, s5_new, s5_inputs,
-             s3_msg, bill_box, base_num, pizza_num, topping_num, qty_in, *screens, pills],
+             s3_msg, bill_box, base_num, pizza_num, topping_num, qty_in, pay_mode, *screens, pills],
         )
 
     return demo

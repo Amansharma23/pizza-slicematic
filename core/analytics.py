@@ -10,7 +10,7 @@ COLUMNS = [
 ]
 
 def load_orders_df() -> pd.DataFrame:
-    """Load orders_log.txt into a pandas DataFrame."""
+    """Load the local orders log into a pandas DataFrame."""
     if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
         return pd.DataFrame(columns=COLUMNS)
     
