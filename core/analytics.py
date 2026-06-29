@@ -43,10 +43,10 @@ def load_orders_df() -> pd.DataFrame:
     
     return df
 
-def get_analytics(filter_type: str, filter_date: str = None) -> dict:
+def get_analytics(filter_type: str, filter_date: str = None, end_date: str = None) -> dict:
     """
     Returns analytics based on the date filter:
-    filter_type: "Specific Date", "This Month", "This Year", "All Time"
+    filter_type: "Date Range", "Specific Date", "This Month", "This Year", "All Time"
     """
     df = load_orders_df()
     
@@ -63,18 +63,27 @@ def get_analytics(filter_type: str, filter_date: str = None) -> dict:
         return empty_res
 
     now = datetime.now()
-    if filter_type == "Specific Date" and filter_date:
-        # filter_date might be an integer timestamp or a string depending on Gradio DateTime output
-        # Let's handle string YYYY-MM-DD or timestamp
+    if filter_type == "Date Range" and (filter_date or end_date):
+        try:
+            start = pd.to_datetime(filter_date).date() if filter_date else None
+            end = pd.to_datetime(end_date).date() if end_date else None
+            if start and end and start > end:
+                start, end = end, start
+            if start:
+                df = df[df["timestamp"].dt.date >= start]
+            if end:
+                df = df[df["timestamp"].dt.date <= end]
+        except Exception:
+            pass  # fallback to no filter if parsing fails
+    elif filter_type == "Specific Date" and filter_date:
         try:
             if isinstance(filter_date, (int, float)):
                 target_date = datetime.fromtimestamp(filter_date).date()
             else:
-                # If it's an ISO string or similar
                 target_date = pd.to_datetime(filter_date).date()
             df = df[df["timestamp"].dt.date == target_date]
         except Exception:
-            pass # fallback to no filter if parsing fails
+            pass  # fallback to no filter if parsing fails
     elif filter_type == "This Month":
         df = df[(df["timestamp"].dt.year == now.year) & (df["timestamp"].dt.month == now.month)]
     elif filter_type == "This Year":

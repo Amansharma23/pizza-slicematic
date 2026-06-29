@@ -2018,6 +2018,48 @@ button.primary:hover,
   overflow:hidden !important;
 }
 
+/* Analytics filters use inline controls to avoid Gradio popovers drifting off-screen. */
+.filter-row {
+  align-items:flex-end !important;
+  overflow:visible !important;
+  flex-wrap:wrap !important;
+  gap:12px !important;
+}
+.analytics-filter-choice .wrap {
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:8px !important;
+  min-height:48px !important;
+  align-items:center !important;
+}
+.analytics-filter-choice label {
+  display:inline-flex !important;
+  margin:0 !important;
+}
+.analytics-filter-choice label > span {
+  display:inline-flex !important;
+  min-height:40px !important;
+  align-items:center !important;
+  border:1px solid #D4B483 !important;
+  border-radius:8px !important;
+  background:#FFFFFF !important;
+  color:#111827 !important;
+  padding:0 14px !important;
+  font-weight:850 !important;
+  cursor:pointer !important;
+}
+.analytics-filter-choice label:has(input:checked) > span {
+  border-color:#10B981 !important;
+  background:#D1FAE5 !important;
+  color:#065F46 !important;
+}
+.analytics-date-field input {
+  min-height:48px !important;
+}
+.analytics-date-field {
+  min-width:180px !important;
+}
+
 @media (max-width: 820px) {
   #hero {
     flex-direction:column !important;
@@ -2313,11 +2355,30 @@ def build_demo() -> gr.Blocks:
                                 
                                 filter_state = gr.State(False)
                                 with gr.Row(elem_classes="filter-row", visible=False) as filter_group:
-                                    time_filter = gr.Dropdown(
-                                        ["Specific Date", "This Month", "This Year", "All Time"], 
-                                        value="All Time", label="Filter Analytics"
+                                    time_filter = gr.Radio(
+                                        ["Date Range", "This Month", "This Year", "All Time"],
+                                        value="All Time",
+                                        label="Filter Analytics",
+                                        scale=2,
+                                        min_width=500,
+                                        elem_classes="analytics-filter-choice",
                                     )
-                                    date_filter = gr.DateTime(include_time=False, label="Select Date (if Specific Date)")
+                                    start_date_filter = gr.Textbox(
+                                        label="Start Date",
+                                        placeholder="YYYY-MM-DD",
+                                        max_lines=1,
+                                        scale=1,
+                                        min_width=180,
+                                        elem_classes="analytics-date-field",
+                                    )
+                                    end_date_filter = gr.Textbox(
+                                        label="End Date",
+                                        placeholder="YYYY-MM-DD",
+                                        max_lines=1,
+                                        scale=1,
+                                        min_width=180,
+                                        elem_classes="analytics-date-field",
+                                    )
                                 
                                 kpis_html = gr.HTML(generate_kpis_html(0, 0, 0, 0, 0))
                                 
@@ -2578,8 +2639,8 @@ def build_demo() -> gr.Blocks:
         disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
         disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
         
-        def refresh_analytics(f_type, f_date):
-            data = analytics.get_analytics(f_type, f_date)
+        def refresh_analytics(f_type, start_date, end_date):
+            data = analytics.get_analytics(f_type, start_date, end_date)
             csv_path = os.path.join(tempfile.gettempdir(), "slicematic_orders_export.csv")
             data["orders_df"].to_csv(csv_path, index=False)
             kpi_html = generate_kpis_html(
@@ -2598,7 +2659,7 @@ def build_demo() -> gr.Blocks:
         pin_btn.click(
             admin_login, admin_pin, [admin_login_group, admin_content_group, pin_msg]
         ).success(
-            refresh_analytics, [time_filter, date_filter], 
+            refresh_analytics, [time_filter, start_date_filter, end_date_filter],
             [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
         )
             
@@ -2608,15 +2669,15 @@ def build_demo() -> gr.Blocks:
         filter_toggle_btn.click(toggle_vis, filter_state, [filter_state, filter_group])
             
         analytics_btn.click(
-            refresh_analytics, [time_filter, date_filter], 
+            refresh_analytics, [time_filter, start_date_filter, end_date_filter],
             [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
         )
         tab_analytics.select(
-            refresh_analytics, [time_filter, date_filter], 
+            refresh_analytics, [time_filter, start_date_filter, end_date_filter],
             [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
         )
         tab_orders.select(
-            refresh_analytics, [time_filter, date_filter], 
+            refresh_analytics, [time_filter, start_date_filter, end_date_filter],
             [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
         )
 
@@ -2869,6 +2930,14 @@ FORCE_LIGHT = (
     "<script>(function(){var u=new URL(window.location.href);"
     "if(u.searchParams.get('__theme')!=='light'){"
     "u.searchParams.set('__theme','light');window.location.replace(u.href);}})();</script>"
+    "<script>(function(){"
+    "function applyAnalyticsDateInputs(){"
+    "document.querySelectorAll('.analytics-date-field input').forEach(function(input){"
+    "if(input.type!=='date'){input.type='date';input.placeholder='';}"
+    "});}"
+    "window.addEventListener('load',applyAnalyticsDateInputs);"
+    "new MutationObserver(applyAnalyticsDateInputs).observe(document.documentElement,{childList:true,subtree:true});"
+    "})();</script>"
 )
 
 # ssr_mode=False: server-side rendering can leave dynamically-toggled columns
