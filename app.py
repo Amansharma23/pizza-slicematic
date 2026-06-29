@@ -15,11 +15,12 @@ from datetime import datetime
 import gradio as gr
 from fastapi import FastAPI
 
-from core import menu as menu_mod
-from core import validation as v
-from core import pricing, persistence, analytics
-from core.menu import MenuError
 from api.routes import router as api_router
+from core import analytics
+from core import menu as menu_mod
+from core import persistence, pricing
+from core import validation as v
+from core.menu import MenuError
 
 # Additive Supabase mirror — optional. The graded path must work without it.
 try:
@@ -34,8 +35,10 @@ BRAND = "SliceMatic"
 # Rendering helpers (shared by UI + API)
 # --------------------------------------------------------------------------- #
 
+
 def render_menu_html(menu) -> str:
     """The menu as a numbered list per category, names + INR prices (FR-2.2)."""
+
     def block(title: str, items) -> str:
         rows = "".join(
             f'<div class="ml-row"><span class="ml-num">{i + 1}</span>'
@@ -43,7 +46,9 @@ def render_menu_html(menu) -> str:
             f'<span class="ml-price">₹{it.price:,.0f}</span></div>'
             for i, it in enumerate(items)
         )
-        return f'<div class="ml-cat"><div class="ml-cat-title">{title}</div>{rows}</div>'
+        return (
+            f'<div class="ml-cat"><div class="ml-cat-title">{title}</div>{rows}</div>'
+        )
 
     if not menu:
         return ""
@@ -93,7 +98,12 @@ theme = gr.themes.Soft(
     primary_hue=gr.themes.colors.emerald,
     secondary_hue=gr.themes.colors.slate,
     neutral_hue=gr.themes.colors.gray,
-    font=[gr.themes.GoogleFont("Outfit"), gr.themes.GoogleFont("Inter"), "system-ui", "sans-serif"],
+    font=[
+        gr.themes.GoogleFont("Outfit"),
+        gr.themes.GoogleFont("Inter"),
+        "system-ui",
+        "sans-serif",
+    ],
 ).set(
     body_background_fill="#FEFAE0",
     body_background_fill_dark="#FEFAE0",
@@ -307,18 +317,22 @@ def generate_kpis_html(orders, qty, rev, gst, disc):
     </div>
     """
 
+
 def df_to_html(df, title=None, scrollable=False):
     title_html = f"<h4>{title}</h4>" if title else ""
     if df.empty:
         return f"<div class='kpi-table'>{title_html}<p>No data</p></div>"
     table_html = df.to_html(index=False, classes="clean-table", border=0)
     scroll_style = "max-height: 400px; overflow-y: auto;" if scrollable else ""
-    return f"<div class='kpi-table' style='{scroll_style}'>{title_html}{table_html}</div>"
+    return (
+        f"<div class='kpi-table' style='{scroll_style}'>{title_html}{table_html}</div>"
+    )
 
 
 # --------------------------------------------------------------------------- #
 # Gradio app
 # --------------------------------------------------------------------------- #
+
 
 def build_demo() -> gr.Blocks:
     try:
@@ -328,7 +342,8 @@ def build_demo() -> gr.Blocks:
         default_menu = None
         default_menu_err = str(exc)
 
-    show = lambda visible: gr.update(visible=visible)
+    def show(visible):
+        return gr.update(visible=visible)
 
     with gr.Blocks(title=f"{BRAND} · Order") as demo:
         menu_state = gr.State(default_menu)
@@ -337,9 +352,11 @@ def build_demo() -> gr.Blocks:
         up_pizza_fp = gr.State(None)
         up_topping_fp = gr.State(None)
 
-        gr.HTML(f'<div id="hero"><h1>🍕 {BRAND}</h1>'
-                f'<p>Fresh, fast, fairly priced — order in four quick steps.</p></div>')
-        
+        gr.HTML(
+            f'<div id="hero"><h1>🍕 {BRAND}</h1>'
+            f"<p>Fresh, fast, fairly priced — order in four quick steps.</p></div>"
+        )
+
         with gr.Tabs():
             with gr.Tab("Customer Ordering"):
                 pills = gr.HTML(step_pills(2))
@@ -349,31 +366,57 @@ def build_demo() -> gr.Blocks:
                     with gr.Group(visible=True) as s2:
                         with gr.Row(elem_classes="header-row"):
                             gr.HTML("<h3>Fill customer details</h3>")
-                        name_in = gr.Textbox(label="Name", placeholder="e.g. Rajan Sharma", max_lines=1)
-                        phone_in = gr.Textbox(label="Phone", placeholder="10 digits, starts 6/7/8/9", max_lines=1)
+                        name_in = gr.Textbox(
+                            label="Name", placeholder="e.g. Rajan Sharma", max_lines=1
+                        )
+                        phone_in = gr.Textbox(
+                            label="Phone",
+                            placeholder="10 digits, starts 6/7/8/9",
+                            max_lines=1,
+                        )
                         s2_msg = gr.HTML("")
                         s2_next = gr.Button("Continue →", variant="primary")
 
                     # ---------- Screen 3: Customize ----------
                     with gr.Group(visible=False) as s3:
                         with gr.Row(elem_classes="header-row"):
-                            with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
+                            with gr.Column(
+                                scale=0, min_width=40, elem_classes="icon-wrap"
+                            ):
                                 s3_back = gr.Button("", elem_classes="back-btn-custom")
                             gr.HTML("<h3>Customize your Pizza</h3>")
                         gr.Markdown("Pick by **item number** from the lists below.")
                         menu_list = gr.HTML(render_menu_html(default_menu))
                         with gr.Row():
-                            base_num = gr.Textbox(label="Enter base", placeholder="item number, e.g. 3", max_lines=1)
-                            pizza_num = gr.Textbox(label="Enter pizza", placeholder="item number, e.g. 7", max_lines=1)
-                            topping_num = gr.Textbox(label="Enter topping", placeholder="item number, e.g. 2", max_lines=1)
-                            qty_in = gr.Textbox(label="Quantity (1–10)", placeholder="whole number 1–10", max_lines=1)
+                            base_num = gr.Textbox(
+                                label="Enter base",
+                                placeholder="item number, e.g. 3",
+                                max_lines=1,
+                            )
+                            pizza_num = gr.Textbox(
+                                label="Enter pizza",
+                                placeholder="item number, e.g. 7",
+                                max_lines=1,
+                            )
+                            topping_num = gr.Textbox(
+                                label="Enter topping",
+                                placeholder="item number, e.g. 2",
+                                max_lines=1,
+                            )
+                            qty_in = gr.Textbox(
+                                label="Quantity (1–10)",
+                                placeholder="whole number 1–10",
+                                max_lines=1,
+                            )
                         s3_msg = gr.HTML("")
                         s3_calc = gr.Button("Review Order →", variant="primary")
 
                     # ---------- Screen 4: Summary ----------
                     with gr.Group(visible=False) as s4:
                         with gr.Row(elem_classes="header-row"):
-                            with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
+                            with gr.Column(
+                                scale=0, min_width=40, elem_classes="icon-wrap"
+                            ):
                                 s4_back = gr.Button("", elem_classes="back-btn-custom")
                             gr.HTML("<h3>Order Summary</h3>")
                         bill_box = gr.HTML(
@@ -385,27 +428,47 @@ def build_demo() -> gr.Blocks:
                     with gr.Group(visible=False) as s5:
                         with gr.Group() as s5_inputs:
                             with gr.Row(elem_classes="header-row"):
-                                with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
-                                    s5_back = gr.Button("", elem_classes="back-btn-custom")
+                                with gr.Column(
+                                    scale=0, min_width=40, elem_classes="icon-wrap"
+                                ):
+                                    gr.Button("", elem_classes="back-btn-custom")
                                 gr.HTML("<h3>Payment</h3>")
-                            pay_mode = gr.Radio(["Cash", "Card", "UPI"], label="Payment mode", value="Cash")
-                            
+                            pay_mode = gr.Radio(
+                                ["Cash", "Card", "UPI"],
+                                label="Payment mode",
+                                value="Cash",
+                            )
+
                             with gr.Group(visible=True) as cash_details:
-                                cash_paid = gr.Number(label="Cash paid by Customer", precision=2)
-                            
+                                cash_paid = gr.Number(
+                                    label="Cash paid by Customer", precision=2
+                                )
+
                             with gr.Group(visible=False) as card_details:
                                 gr.Markdown("#### Secure Card Payment")
-                                gr.Textbox(label="Card Number", placeholder="0000 0000 0000 0000", max_lines=1)
+                                gr.Textbox(
+                                    label="Card Number",
+                                    placeholder="0000 0000 0000 0000",
+                                    max_lines=1,
+                                )
                                 with gr.Row():
-                                    gr.Textbox(label="Expiry Date", placeholder="MM/YY", max_lines=1)
-                                    gr.Textbox(label="CVV", placeholder="123", type="password")
-                                    
+                                    gr.Textbox(
+                                        label="Expiry Date",
+                                        placeholder="MM/YY",
+                                        max_lines=1,
+                                    )
+                                    gr.Textbox(
+                                        label="CVV", placeholder="123", type="password"
+                                    )
+
                             with gr.Group(visible=False) as upi_details:
-                                gr.HTML('<div style="text-align: center; margin: 10px 0;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=upi://pay?pa=slicematic@upi&pn=SliceMatic" alt="UPI QR Code" style="display: inline-block; border-radius: 8px; border: 1px solid #E5E7EB; padding: 10px; background: white;"/><p style="color: #6B7280; font-size: 13px; margin-top: 8px;">Scan using Google Pay, PhonePe, or Paytm</p></div>')
-                            
+                                gr.HTML(
+                                    '<div style="text-align: center; margin: 10px 0;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=upi://pay?pa=slicematic@upi&pn=SliceMatic" alt="UPI QR Code" style="display: inline-block; border-radius: 8px; border: 1px solid #E5E7EB; padding: 10px; background: white;"/><p style="color: #6B7280; font-size: 13px; margin-top: 8px;">Scan using Google Pay, PhonePe, or Paytm</p></div>'
+                                )
+
                             s5_msg = gr.HTML("")
                             s5_pay = gr.Button("Pay & confirm order", variant="primary")
-                        
+
                         confirm_box = gr.HTML(visible=False)
                         s5_new = gr.Button("Place another order", visible=False)
 
@@ -414,69 +477,128 @@ def build_demo() -> gr.Blocks:
                     with gr.Group(visible=True) as admin_login_group:
                         with gr.Row(elem_classes="header-row"):
                             gr.HTML("<h3>Admin Authentication</h3>")
-                        admin_pin = gr.Textbox(type="password", label="Enter Admin PIN to access")
+                        admin_pin = gr.Textbox(
+                            type="password", label="Enter Admin PIN to access"
+                        )
                         pin_btn = gr.Button("Login", variant="primary")
                         pin_msg = gr.HTML("")
-                
+
                     with gr.Group(visible=False) as admin_content_group:
                         with gr.Tabs():
                             with gr.Tab("Menu Configuration"):
                                 gr.Markdown("### Choose your menu")
                                 menu_mode = gr.Radio(
-                                    ["Use SliceMatic default menu", "Upload my own menu files"],
-                                    value="Use SliceMatic default menu", label="Menu source",
+                                    [
+                                        "Use SliceMatic default menu",
+                                        "Upload my own menu files",
+                                    ],
+                                    value="Use SliceMatic default menu",
+                                    label="Menu source",
                                 )
                                 with gr.Group(visible=False) as upload_group:
-                                    up_base = gr.UploadButton("⬆  Upload Base menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
-                                    up_base_status = gr.Markdown("", elem_classes="up-status")
-                                    up_pizza = gr.UploadButton("⬆  Upload Pizza menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
-                                    up_pizza_status = gr.Markdown("", elem_classes="up-status")
-                                    up_topping = gr.UploadButton("⬆  Upload Toppings menu  (.txt)", file_types=[".txt"], elem_classes="up-btn")
-                                    up_topping_status = gr.Markdown("", elem_classes="up-status")
-                                s1_msg = gr.HTML("" if default_menu else f'<p class="err">{default_menu_err}</p>')
+                                    up_base = gr.UploadButton(
+                                        "⬆  Upload Base menu  (.txt)",
+                                        file_types=[".txt"],
+                                        elem_classes="up-btn",
+                                    )
+                                    up_base_status = gr.Markdown(
+                                        "", elem_classes="up-status"
+                                    )
+                                    up_pizza = gr.UploadButton(
+                                        "⬆  Upload Pizza menu  (.txt)",
+                                        file_types=[".txt"],
+                                        elem_classes="up-btn",
+                                    )
+                                    up_pizza_status = gr.Markdown(
+                                        "", elem_classes="up-status"
+                                    )
+                                    up_topping = gr.UploadButton(
+                                        "⬆  Upload Toppings menu  (.txt)",
+                                        file_types=[".txt"],
+                                        elem_classes="up-btn",
+                                    )
+                                    up_topping_status = gr.Markdown(
+                                        "", elem_classes="up-status"
+                                    )
+                                s1_msg = gr.HTML(
+                                    ""
+                                    if default_menu
+                                    else f'<p class="err">{default_menu_err}</p>'
+                                )
                                 s1_next = gr.Button("Update Menu", variant="primary")
-                            
+
                             with gr.Tab("Discount Settings"):
                                 gr.Markdown("### Global Discount Rate")
                                 threshold_in = gr.Number(
                                     value=pricing.get_discount_threshold(),
                                     precision=0,
-                                    label="Discount Threshold"
+                                    label="Discount Threshold",
                                 )
-                                discount_in = gr.Slider(0, 100, value=pricing.get_discount_rate() * 100, step=1, label="Discount % (applied to all orders >= 5 items)")
-                                disc_btn = gr.Button("Save Discount Rate", variant="primary")
+                                discount_in = gr.Slider(
+                                    0,
+                                    100,
+                                    value=pricing.get_discount_rate() * 100,
+                                    step=1,
+                                    label="Discount % (applied to all orders >= 5 items)",
+                                )
+                                disc_btn = gr.Button(
+                                    "Save Discount Rate", variant="primary"
+                                )
                                 disc_msg = gr.HTML("")
-                                
+
                             with gr.Tab("Analytics") as tab_analytics:
                                 with gr.Row(elem_classes="header-row"):
                                     gr.HTML("<h3>Analytics Dashboard</h3>")
-                                    with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
-                                        filter_toggle_btn = gr.Button("", elem_classes="icon-btn btn-filter")
-                                    with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
-                                        analytics_btn = gr.Button("", elem_classes="icon-btn btn-refresh")
-                                
+                                    with gr.Column(
+                                        scale=0, min_width=40, elem_classes="icon-wrap"
+                                    ):
+                                        filter_toggle_btn = gr.Button(
+                                            "", elem_classes="icon-btn btn-filter"
+                                        )
+                                    with gr.Column(
+                                        scale=0, min_width=40, elem_classes="icon-wrap"
+                                    ):
+                                        analytics_btn = gr.Button(
+                                            "", elem_classes="icon-btn btn-refresh"
+                                        )
+
                                 filter_state = gr.State(False)
-                                with gr.Row(elem_classes="filter-row", visible=False) as filter_group:
+                                with gr.Row(
+                                    elem_classes="filter-row", visible=False
+                                ) as filter_group:
                                     time_filter = gr.Dropdown(
-                                        ["Specific Date", "This Month", "This Year", "All Time"], 
-                                        value="All Time", label="Filter Analytics"
+                                        [
+                                            "Specific Date",
+                                            "This Month",
+                                            "This Year",
+                                            "All Time",
+                                        ],
+                                        value="All Time",
+                                        label="Filter Analytics",
                                     )
-                                    date_filter = gr.DateTime(include_time=False, label="Select Date (if Specific Date)")
-                                
+                                    date_filter = gr.DateTime(
+                                        include_time=False,
+                                        label="Select Date (if Specific Date)",
+                                    )
+
                                 kpis_html = gr.HTML(generate_kpis_html(0, 0, 0, 0, 0))
-                                
+
                                 top_combos = gr.HTML()
-                                
+
                                 gr.Markdown("### Top Sellers")
                                 with gr.Row(elem_classes="df-row"):
                                     top_bases = gr.HTML()
                                     top_pizzas = gr.HTML()
                                     top_toppings = gr.HTML()
-                                
+
                             with gr.Tab("Orders Log") as tab_orders:
                                 with gr.Row(elem_classes="header-row-right"):
-                                    with gr.Column(scale=0, min_width=40, elem_classes="icon-wrap"):
-                                        download_btn = gr.DownloadButton("", elem_classes="icon-btn btn-download")
+                                    with gr.Column(
+                                        scale=0, min_width=40, elem_classes="icon-wrap"
+                                    ):
+                                        download_btn = gr.DownloadButton(
+                                            "", elem_classes="icon-btn btn-download"
+                                        )
                                 raw_orders = gr.HTML()
 
         screens = [s2, s3, s4, s5]
@@ -500,12 +622,24 @@ def build_demo() -> gr.Blocks:
 
         def update_menu(mode, fb, fp, ft, current_menu):
             if mode == "Upload my own menu files":
-                missing = [n for n, f in (("Base", fb), ("Pizza", fp), ("Toppings", ft)) if not f]
+                missing = [
+                    n
+                    for n, f in (("Base", fb), ("Pizza", fp), ("Toppings", ft))
+                    if not f
+                ]
                 if missing:
                     msg = f'<p class="err">Please upload all three files. Missing: {", ".join(missing)}.</p>'
-                    return [current_menu, gr.update(value=msg), gr.update(value=render_menu_html(current_menu))]
+                    return [
+                        current_menu,
+                        gr.update(value=msg),
+                        gr.update(value=render_menu_html(current_menu)),
+                    ]
                 tmpdir = tempfile.mkdtemp(prefix="slicematic_menu_")
-                for src, dest in ((fb, menu_mod.BASE_FILE), (fp, menu_mod.PIZZA_FILE), (ft, menu_mod.TOPPING_FILE)):
+                for src, dest in (
+                    (fb, menu_mod.BASE_FILE),
+                    (fp, menu_mod.PIZZA_FILE),
+                    (ft, menu_mod.TOPPING_FILE),
+                ):
                     src_path = src.name if hasattr(src, "name") else src
                     with open(src_path, "r", encoding="utf-8", errors="replace") as r:
                         data = r.read()
@@ -518,10 +652,26 @@ def build_demo() -> gr.Blocks:
                 m = menu_mod.load_menu(load_dir)
             except MenuError as exc:
                 msg = f'<p class="err">{exc}</p>'
-                return [current_menu, gr.update(value=msg), gr.update(value=render_menu_html(current_menu))]
-            return [m, gr.update(value="<p style='color:#10B981;font-weight:bold;'>Menu updated successfully!</p>"), gr.update(value=render_menu_html(m))]
+                return [
+                    current_menu,
+                    gr.update(value=msg),
+                    gr.update(value=render_menu_html(current_menu)),
+                ]
+            return [
+                m,
+                gr.update(
+                    value="<p style='color:#10B981;font-weight:bold;'>Menu updated successfully!</p>"
+                ),
+                gr.update(value=render_menu_html(m)),
+            ]
 
-        admin_menu_inputs = [menu_mode, up_base_fp, up_pizza_fp, up_topping_fp, menu_state]
+        admin_menu_inputs = [
+            menu_mode,
+            up_base_fp,
+            up_pizza_fp,
+            up_topping_fp,
+            menu_state,
+        ]
         s1_next.click(update_menu, admin_menu_inputs, [menu_state, s1_msg, menu_list])
 
         # --- Screen 2 logic ---
@@ -533,33 +683,54 @@ def build_demo() -> gr.Blocks:
                 msg = "<br>".join(f'<span class="err">• {e}</span>' for e in errs)
                 return [order, gr.update(value=msg)] + goto(2)
             order = dict(order)
-            order.update(name=name_v, phone=phone_v, status="started",
-                         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            order.update(
+                name=name_v,
+                phone=phone_v,
+                status="started",
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            )
             return [order, gr.update(value="")] + goto(3)
 
-        s2_next.click(submit_customer, [name_in, phone_in, order_state],
-                      [order_state, s2_msg, *screens, pills])
-        
+        s2_next.click(
+            submit_customer,
+            [name_in, phone_in, order_state],
+            [order_state, s2_msg, *screens, pills],
+        )
+
         # --- Admin Logic ---
         def admin_login(pin):
             if pin == "123456":
-                return gr.update(visible=False), gr.update(visible=True), gr.update(value="")
-            return gr.update(visible=True), gr.update(visible=False), gr.update(value='<p class="err">Invalid PIN</p>')
-        
+                return (
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    gr.update(value=""),
+                )
+            return (
+                gr.update(visible=True),
+                gr.update(visible=False),
+                gr.update(value='<p class="err">Invalid PIN</p>'),
+            )
+
         def update_discount(rate, threshold):
             pricing.set_discount_rate(rate / 100.0)
             pricing.set_discount_threshold(int(threshold))
 
             return f"<p style='color:#10B981;font-weight:bold;'>Discount updated: {rate}% for orders of {int(threshold)} or more items</p>"
-            
+
         disc_btn.click(update_discount, [discount_in, threshold_in], disc_msg)
-        
+
         def refresh_analytics(f_type, f_date):
             data = analytics.get_analytics(f_type, f_date)
-            csv_path = os.path.join(tempfile.gettempdir(), "slicematic_orders_export.csv")
+            csv_path = os.path.join(
+                tempfile.gettempdir(), "slicematic_orders_export.csv"
+            )
             data["orders_df"].to_csv(csv_path, index=False)
             kpi_html = generate_kpis_html(
-                data["total_orders"], data["total_qty"], data["revenue"], data["gst"], data["discount"]
+                data["total_orders"],
+                data["total_qty"],
+                data["revenue"],
+                data["gst"],
+                data["discount"],
             )
             return (
                 kpi_html,
@@ -568,58 +739,118 @@ def build_demo() -> gr.Blocks:
                 df_to_html(data["top_toppings"], "Top Toppings"),
                 df_to_html(data["top_combos"], "Top Combos"),
                 df_to_html(data["orders_df"], scrollable=True),
-                csv_path
+                csv_path,
             )
-            
+
         pin_btn.click(
             admin_login, admin_pin, [admin_login_group, admin_content_group, pin_msg]
         ).success(
-            refresh_analytics, [time_filter, date_filter], 
-            [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
+            refresh_analytics,
+            [time_filter, date_filter],
+            [
+                kpis_html,
+                top_bases,
+                top_pizzas,
+                top_toppings,
+                top_combos,
+                raw_orders,
+                download_btn,
+            ],
         )
-            
+
         def toggle_vis(vis):
             return not vis, gr.update(visible=not vis)
-            
+
         filter_toggle_btn.click(toggle_vis, filter_state, [filter_state, filter_group])
-            
+
         analytics_btn.click(
-            refresh_analytics, [time_filter, date_filter], 
-            [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
+            refresh_analytics,
+            [time_filter, date_filter],
+            [
+                kpis_html,
+                top_bases,
+                top_pizzas,
+                top_toppings,
+                top_combos,
+                raw_orders,
+                download_btn,
+            ],
         )
         tab_analytics.select(
-            refresh_analytics, [time_filter, date_filter], 
-            [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
+            refresh_analytics,
+            [time_filter, date_filter],
+            [
+                kpis_html,
+                top_bases,
+                top_pizzas,
+                top_toppings,
+                top_combos,
+                raw_orders,
+                download_btn,
+            ],
         )
         tab_orders.select(
-            refresh_analytics, [time_filter, date_filter], 
-            [kpis_html, top_bases, top_pizzas, top_toppings, top_combos, raw_orders, download_btn]
+            refresh_analytics,
+            [time_filter, date_filter],
+            [
+                kpis_html,
+                top_bases,
+                top_pizzas,
+                top_toppings,
+                top_combos,
+                raw_orders,
+                download_btn,
+            ],
         )
 
         # --- Screen 3 logic ---
         def view_bill(base_raw, pizza_raw, topping_raw, qty_raw, m, order):
             if not m:
-                return [order, gr.update(value='<span class="err">Menu not loaded — go back to step 1.</span>'), gr.update()] + goto(3)
+                return [
+                    order,
+                    gr.update(
+                        value='<span class="err">Menu not loaded — go back to step 1.</span>'
+                    ),
+                    gr.update(),
+                ] + goto(3)
             ok_b, b = v.validate_selection(base_raw, len(m.bases))
             ok_p, p = v.validate_selection(pizza_raw, len(m.pizzas))
             ok_t, t = v.validate_selection(topping_raw, len(m.toppings))
             ok_q, q = v.validate_quantity(qty_raw)
             errs = []
-            if not ok_b: errs.append(f"Base — {b}")
-            if not ok_p: errs.append(f"Pizza — {p}")
-            if not ok_t: errs.append(f"Topping — {t}")
-            if not ok_q: errs.append(q)
+            if not ok_b:
+                errs.append(f"Base — {b}")
+            if not ok_p:
+                errs.append(f"Pizza — {p}")
+            if not ok_t:
+                errs.append(f"Topping — {t}")
+            if not ok_q:
+                errs.append(q)
             if errs:
                 msg = "<br>".join(f'<span class="err">• {e}</span>' for e in errs)
                 return [order, gr.update(value=msg), gr.update()] + goto(3)
             base, pizza, topping = m.bases[b - 1], m.pizzas[p - 1], m.toppings[t - 1]
             bill = pricing.compute_bill(base, pizza, topping, q)
             order = dict(order)
-            order.update(base=base, pizza=pizza, topping=topping, quantity=q, bill=bill, status="menu_selected")
-            return [order, gr.update(value=""), gr.update(value=bill_html(bill))] + goto(4)
+            order.update(
+                base=base,
+                pizza=pizza,
+                topping=topping,
+                quantity=q,
+                bill=bill,
+                status="menu_selected",
+            )
+            return [
+                order,
+                gr.update(value=""),
+                gr.update(value=bill_html(bill)),
+            ] + goto(4)
 
-        s3_calc.click(view_bill, [base_num, pizza_num, topping_num, qty_in, menu_state, order_state],
-                      [order_state, s3_msg, bill_box, *screens, pills])
+        s3_calc.click(
+            view_bill,
+            [base_num, pizza_num, topping_num, qty_in, menu_state, order_state],
+            [order_state, s3_msg, bill_box, *screens, pills],
+        )
         s3_back.click(lambda: goto(2), None, [*screens, pills])
 
         # --- Screen 4 logic ---
@@ -638,28 +869,58 @@ def build_demo() -> gr.Blocks:
                 gr.update(visible=(mode == "Card")),
                 gr.update(visible=(mode == "UPI")),
             )
-            
-        pay_mode.change(toggle_payment_ui, inputs=[pay_mode], outputs=[cash_details, card_details, upi_details])
+
+        pay_mode.change(
+            toggle_payment_ui,
+            inputs=[pay_mode],
+            outputs=[cash_details, card_details, upi_details],
+        )
 
         def pay(mode, cash_paid_value, order):
             ok, mode_v = v.validate_payment(mode)
             if not ok:
-                return (order, gr.update(value=f'<span class="err">{mode_v}</span>'),
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                return (
+                    order,
+                    gr.update(value=f'<span class="err">{mode_v}</span>'),
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                )
             bill = order.get("bill")
             if not bill:
-                return (order, gr.update(value='<span class="err">No bill found — please rebuild your order.</span>'),
-                        gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                return (
+                    order,
+                    gr.update(
+                        value='<span class="err">No bill found — please rebuild your order.</span>'
+                    ),
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                )
             cash_return_html = ""
             if mode_v == "Cash":
                 try:
                     cash_paid_float = float(cash_paid_value)
                 except (TypeError, ValueError):
-                    return (order, gr.update(value='<span class="err">Please enter the cash paid by customer.</span>'),
-                            gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                    return (
+                        order,
+                        gr.update(
+                            value='<span class="err">Please enter the cash paid by customer.</span>'
+                        ),
+                        gr.update(visible=False),
+                        gr.update(visible=False),
+                        gr.update(visible=True),
+                    )
                 if cash_paid_float < bill.total:
-                    return (order, gr.update(value=f'<span class="err">Cash paid must be at least INR {bill.total:.2f}.</span>'),
-                            gr.update(visible=False), gr.update(visible=False), gr.update(visible=True))
+                    return (
+                        order,
+                        gr.update(
+                            value=f'<span class="err">Cash paid must be at least INR {bill.total:.2f}.</span>'
+                        ),
+                        gr.update(visible=False),
+                        gr.update(visible=False),
+                        gr.update(visible=True),
+                    )
                 cash_return = cash_paid_float - bill.total
                 cash_return_html = (
                     f'<div class="bl"><span>Cash paid by customer</span><span>INR {cash_paid_float:.2f}</span></div>'
@@ -668,47 +929,93 @@ def build_demo() -> gr.Blocks:
             order = dict(order)
             order["status"] = "payment_in_progress"
             ts = persistence.append_order(
-                name=order["name"], phone=order["phone"], bill=bill,
-                payment_mode=mode_v, timestamp=order.get("timestamp"),
+                name=order["name"],
+                phone=order["phone"],
+                bill=bill,
+                payment_mode=mode_v,
+                timestamp=order.get("timestamp"),
             )
             order_no = f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((order['phone'], ts))) % 10000:04d}"
             order.update(status="ordered", order_no=order_no, payment_mode=mode_v)
             if db_orders:  # best-effort mirror; never affects the .txt log above
                 db_orders.mirror_order(
-                    name=order["name"], phone=order["phone"], bill=bill,
-                    payment_mode=mode_v, order_no=order_no, timestamp=ts, source="gradio",
+                    name=order["name"],
+                    phone=order["phone"],
+                    bill=bill,
+                    payment_mode=mode_v,
+                    order_no=order_no,
+                    timestamp=ts,
+                    source="gradio",
                 )
-            note = {"Cash": "Pay cash on delivery.", "Card": "Card payment confirmed.",
-                    "UPI": "UPI payment confirmed."}[mode_v]
-            html = (f'<div class="bill-card" style="text-align:center; padding: 30px;">'
-                    f'<div class="check-wrapper"><svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/><path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/></svg></div>'
-                    f'<div style="font-size:24px;font-weight:800;color:#10B981;margin-top:16px">Order confirmed</div>'
-                    f'<div style="color:#6B7280;margin:8px 0 20px;font-size:15px">Order no. <b>{order_no}</b></div>'
-                    f'<div class="bl"><span>Paying via {mode_v}</span><span style="font-weight:600;color:#111827">INR {bill.total:.2f}</span></div>'
-                    f'{cash_return_html}'
-                    f'<div class="bl muted"><span>{note}</span><span></span></div>'
-                    f'<div class="bl total" style="justify-content:center;border:none;padding-top:20px;margin-top:10px">'
-                    f'<span>Thanks, {order["name"]}! 🍕</span></div></div>')
-            return (order, gr.update(value=""), gr.update(value=html, visible=True),
-                    gr.update(visible=True), gr.update(visible=False))
+            note = {
+                "Cash": "Pay cash on delivery.",
+                "Card": "Card payment confirmed.",
+                "UPI": "UPI payment confirmed.",
+            }[mode_v]
+            html = (
+                f'<div class="bill-card" style="text-align:center; padding: 30px;">'
+                f'<div class="check-wrapper"><svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/><path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/></svg></div>'
+                f'<div style="font-size:24px;font-weight:800;color:#10B981;margin-top:16px">Order confirmed</div>'
+                f'<div style="color:#6B7280;margin:8px 0 20px;font-size:15px">Order no. <b>{order_no}</b></div>'
+                f'<div class="bl"><span>Paying via {mode_v}</span><span style="font-weight:600;color:#111827">INR {bill.total:.2f}</span></div>'
+                f"{cash_return_html}"
+                f'<div class="bl muted"><span>{note}</span><span></span></div>'
+                f'<div class="bl total" style="justify-content:center;border:none;padding-top:20px;margin-top:10px">'
+                f'<span>Thanks, {order["name"]}! 🍕</span></div></div>'
+            )
+            return (
+                order,
+                gr.update(value=""),
+                gr.update(value=html, visible=True),
+                gr.update(visible=True),
+                gr.update(visible=False),
+            )
 
-        s5_pay.click(pay, [pay_mode, cash_paid, order_state],
-                     [order_state, s5_msg, confirm_box, s5_new, s5_inputs])
+        s5_pay.click(
+            pay,
+            [pay_mode, cash_paid, order_state],
+            [order_state, s5_msg, confirm_box, s5_new, s5_inputs],
+        )
 
-        bill_placeholder = ('<div class="bill-empty">Your order summary will appear here.</div>')
+        bill_placeholder = (
+            '<div class="bill-empty">Your order summary will appear here.</div>'
+        )
 
         def new_order():
-            return ([{}, gr.update(value=""), gr.update(value="", visible=False),
-                     gr.update(visible=False), gr.update(visible=True),
-                     gr.update(value=""), gr.update(value=bill_placeholder),
-                     gr.update(value=""), gr.update(value=""), gr.update(value=""), gr.update(value=""),
-                     gr.update(value=None)]
-                    + goto(2))
+            return [
+                {},
+                gr.update(value=""),
+                gr.update(value="", visible=False),
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(value=""),
+                gr.update(value=bill_placeholder),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=""),
+                gr.update(value=None),
+            ] + goto(2)
 
         s5_new.click(
-            new_order, None,
-            [order_state, s5_msg, confirm_box, s5_new, s5_inputs,
-             s3_msg, bill_box, base_num, pizza_num, topping_num, qty_in, cash_paid, *screens, pills],
+            new_order,
+            None,
+            [
+                order_state,
+                s5_msg,
+                confirm_box,
+                s5_new,
+                s5_inputs,
+                s3_msg,
+                bill_box,
+                base_num,
+                pizza_num,
+                topping_num,
+                qty_in,
+                cash_paid,
+                *screens,
+                pills,
+            ],
         )
 
     return demo
@@ -727,7 +1034,9 @@ FORCE_LIGHT = (
 
 # ssr_mode=False: server-side rendering can leave dynamically-toggled columns
 # blank when mounted on FastAPI without a Node SSR server. Force client render.
-app = gr.mount_gradio_app(api, demo, path="/", theme=theme, css=CSS, ssr_mode=False, head=FORCE_LIGHT)
+app = gr.mount_gradio_app(
+    api, demo, path="/", theme=theme, css=CSS, ssr_mode=False, head=FORCE_LIGHT
+)
 
 
 if __name__ == "__main__":

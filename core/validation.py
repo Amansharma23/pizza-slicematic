@@ -21,7 +21,10 @@ def validate_name(raw: str) -> tuple[bool, str]:
         return False, "Please enter a name."
     name = raw.strip()
     if not name:
-        return False, "Name cannot be blank. Use letters and spaces only (2–40 characters)."
+        return (
+            False,
+            "Name cannot be blank. Use letters and spaces only (2–40 characters).",
+        )
     if not all(ch.isalpha() or ch == " " for ch in name):
         return False, "Name may contain letters and spaces only — no digits or symbols."
     if len(name) < NAME_MIN:
@@ -37,7 +40,10 @@ def validate_phone(raw: str) -> tuple[bool, str]:
         return False, "Please enter a phone number."
     phone = raw.strip()
     if not phone:
-        return False, "Phone number cannot be blank. Enter 10 digits starting with 6, 7, 8 or 9."
+        return (
+            False,
+            "Phone number cannot be blank. Enter 10 digits starting with 6, 7, 8 or 9.",
+        )
     if not phone.isdigit():
         return False, "Phone must be digits only (no spaces, +, or letters)."
     if len(phone) != 10:
@@ -53,16 +59,25 @@ def validate_quantity(raw) -> tuple[bool, int | str]:
         return False, f"Please enter a quantity ({QTY_MIN}–{QTY_MAX})."
     text = str(raw).strip()
     if not text:
-        return False, f"Quantity cannot be blank. Enter a whole number {QTY_MIN}–{QTY_MAX}."
+        return (
+            False,
+            f"Quantity cannot be blank. Enter a whole number {QTY_MIN}–{QTY_MAX}.",
+        )
     # Pure integer only: optional sign then digits. '2.5' and 'three' are rejected here.
     candidate = text[1:] if text[0] in "+-" else text
     if not candidate.isdigit():
-        return False, f"Quantity must be a whole number {QTY_MIN}–{QTY_MAX} (no decimals or words)."
+        return (
+            False,
+            f"Quantity must be a whole number {QTY_MIN}–{QTY_MAX} (no decimals or words).",
+        )
     qty = int(text)
     if qty < QTY_MIN:
         return False, f"Quantity must be at least {QTY_MIN}."
     if qty > QTY_MAX:
-        return False, f"Maximum capacity is {QTY_MAX} pizzas per order. Please enter {QTY_MIN}–{QTY_MAX}."
+        return (
+            False,
+            f"Maximum capacity is {QTY_MAX} pizzas per order. Please enter {QTY_MIN}–{QTY_MAX}.",
+        )
     return True, qty
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from core.models import MenuItem, Menu
+from core.models import Menu, MenuItem
 
 # Default filenames as shipped in menu_data/. Order: base, pizza, topping.
 BASE_FILE = "Types_of_Base.txt"

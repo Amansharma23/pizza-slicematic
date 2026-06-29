@@ -14,9 +14,10 @@ from datetime import datetime
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from core import analytics
 from core import menu as menu_mod
+from core import persistence, pricing
 from core import validation as v
-from core import pricing, persistence, analytics
 from core.menu import MenuError
 
 # Additive Supabase mirror — optional. The graded path must work without it.
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/api")
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+
 
 def _cat(items):
     return [{"id": i.id, "name": i.name, "price": i.price} for i in items]
@@ -70,7 +72,11 @@ def _resolve(req):
     base = _find(m.bases, req.base_id)
     pizza = _find(m.pizzas, req.pizza_id)
     topping = _find(m.toppings, req.topping_id)
-    missing = [n for n, val in (("base", base), ("pizza", pizza), ("topping", topping)) if val is None]
+    missing = [
+        n
+        for n, val in (("base", base), ("pizza", pizza), ("topping", topping))
+        if val is None
+    ]
     if missing:
         return None, {"selection": f"Please choose a {', '.join(missing)}."}
     return pricing.compute_bill(base, pizza, topping, qty), None
@@ -79,6 +85,7 @@ def _resolve(req):
 # --------------------------------------------------------------------------- #
 # Models
 # --------------------------------------------------------------------------- #
+
 
 class CustomerReq(BaseModel):
     name: str = ""
@@ -104,6 +111,7 @@ class ConfigReq(BaseModel):
 # Routes
 # --------------------------------------------------------------------------- #
 
+
 @router.get("/health")
 def health():
     return {"status": "ok", "brand": BRAND}
@@ -115,7 +123,11 @@ def get_menu():
         m = menu_mod.load_menu(MENU_DIR)
     except MenuError as exc:
         return {"error": str(exc)}
-    return {"bases": _cat(m.bases), "pizzas": _cat(m.pizzas), "toppings": _cat(m.toppings)}
+    return {
+        "bases": _cat(m.bases),
+        "pizzas": _cat(m.pizzas),
+        "toppings": _cat(m.toppings),
+    }
 
 
 @router.post("/validate/customer")
@@ -161,11 +173,18 @@ def place_order(req: OrderReq):
         return {"ok": False, "errors": errors}
 
     ts = persistence.append_order(name=name, phone=phone, bill=bill, payment_mode=mode)
-    order_no = f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((phone, ts))) % 10000:04d}"
+    order_no = (
+        f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((phone, ts))) % 10000:04d}"
+    )
     if db_orders:  # best-effort mirror; never affects the .txt log above
         db_orders.mirror_order(
-            name=name, phone=phone, bill=bill, payment_mode=mode,
-            order_no=order_no, timestamp=ts, source="api",
+            name=name,
+            phone=phone,
+            bill=bill,
+            payment_mode=mode,
+            order_no=order_no,
+            timestamp=ts,
+            source="api",
         )
     return {
         "ok": True,

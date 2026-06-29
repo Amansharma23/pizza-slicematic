@@ -18,7 +18,7 @@ def test_strips_whitespace_and_blank_lines():
     assert items[0].id == "B1" and items[0].name == "Thin Crust"
 
 
-def test_skips_missing_price_field():            # edge case 8
+def test_skips_missing_price_field():  # edge case 8
     items = menu.parse_menu_lines(["B1;Thin Crust", "B2;Thick Crust;179"])
     assert [i.name for i in items] == ["Thick Crust"]
 

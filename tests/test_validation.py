@@ -4,15 +4,15 @@ import pytest
 
 from core import validation as v
 
-
 # --- Name -------------------------------------------------------------------
 
-def test_name_only_spaces_rejected():            # edge case 1
+
+def test_name_only_spaces_rejected():  # edge case 1
     ok, msg = v.validate_name("     ")
     assert ok is False and "blank" in msg.lower()
 
 
-def test_name_empty_rejected():                  # edge case 6 (empty)
+def test_name_empty_rejected():  # edge case 6 (empty)
     assert v.validate_name("")[0] is False
 
 
@@ -36,7 +36,8 @@ def test_valid_names_accepted_and_trimmed(name):
 
 # --- Phone ------------------------------------------------------------------
 
-def test_phone_starts_with_1_rejected():         # edge case 2
+
+def test_phone_starts_with_1_rejected():  # edge case 2
     ok, msg = v.validate_phone("1234567890")
     assert ok is False and "6, 7, 8" in msg
 
@@ -50,19 +51,22 @@ def test_phone_non_digit_rejected():
     assert v.validate_phone("98765abcd0")[0] is False
 
 
-def test_phone_empty_rejected():                 # edge case 6
+def test_phone_empty_rejected():  # edge case 6
     assert v.validate_phone("")[0] is False
 
 
-@pytest.mark.parametrize("phone", ["9876543210", "6000000000", "7111111111", "8123456789"])
+@pytest.mark.parametrize(
+    "phone", ["9876543210", "6000000000", "7111111111", "8123456789"]
+)
 def test_valid_phones_accepted(phone):
     assert v.validate_phone(f" {phone} ") == (True, phone)
 
 
 # --- Quantity ---------------------------------------------------------------
 
+
 @pytest.mark.parametrize("bad", ["0", "11", "-1", "2.5", "three", "", "  "])
-def test_quantity_invalid_rejected(bad):         # edge cases 3, 6, 7
+def test_quantity_invalid_rejected(bad):  # edge cases 3, 6, 7
     assert v.validate_quantity(bad)[0] is False
 
 
@@ -78,7 +82,8 @@ def test_quantity_valid_accepted(good, expected):
 
 # --- Selection --------------------------------------------------------------
 
-def test_selection_zero_rejected():              # edge case 4
+
+def test_selection_zero_rejected():  # edge case 4
     assert v.validate_selection("0", 8)[0] is False
 
 
@@ -104,8 +109,11 @@ def test_selection_valid_accepted(good):
 
 # --- Payment ----------------------------------------------------------------
 
-@pytest.mark.parametrize("raw,mode", [("1", "Cash"), ("2", "Card"), ("3", "UPI"),
-                                      ("cash", "Cash"), ("UPI", "UPI")])
+
+@pytest.mark.parametrize(
+    "raw,mode",
+    [("1", "Cash"), ("2", "Card"), ("3", "UPI"), ("cash", "Cash"), ("UPI", "UPI")],
+)
 def test_payment_valid(raw, mode):
     assert v.validate_payment(raw) == (True, mode)
 
