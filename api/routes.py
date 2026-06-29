@@ -19,7 +19,15 @@ from core import pricing, persistence, analytics
 from core.menu import MenuError
 
 MENU_DIR = os.environ.get("MENU_DIR", "menu_data")
+if os.environ.get("SPACE_ID"):
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "/data")
+else:
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "database")
+CUSTOM_MENU_DIR = os.path.join(DATABASE_DIR, "menu")
+MENU_SOURCE_FILE = os.path.join(DATABASE_DIR, "menu_source.txt")
 BRAND = "SliceMatic"
+DEFAULT_MENU_MODE = "Use SliceMatic default menu"
+CUSTOM_MENU_MODE = "Upload my own menu files"
 
 router = APIRouter(prefix="/api")
 
@@ -34,6 +42,36 @@ def _cat(items):
 
 def _find(items, _id):
     return next((i for i in items if i.id == _id), None)
+
+
+def _menu_file_paths(menu_dir: str) -> dict[str, str]:
+    return {
+        menu_mod.BASE_FILE: os.path.join(menu_dir, menu_mod.BASE_FILE),
+        menu_mod.PIZZA_FILE: os.path.join(menu_dir, menu_mod.PIZZA_FILE),
+        menu_mod.TOPPING_FILE: os.path.join(menu_dir, menu_mod.TOPPING_FILE),
+    }
+
+
+def _has_complete_menu_files(menu_dir: str) -> bool:
+    return all(os.path.isfile(path) for path in _menu_file_paths(menu_dir).values())
+
+
+def _load_menu_source() -> str:
+    try:
+        with open(MENU_SOURCE_FILE, "r", encoding="utf-8") as fh:
+            mode = fh.read().strip()
+    except OSError:
+        return DEFAULT_MENU_MODE
+    return mode if mode in {DEFAULT_MENU_MODE, CUSTOM_MENU_MODE} else DEFAULT_MENU_MODE
+
+
+def _load_active_menu():
+    mode = _load_menu_source()
+    if mode == CUSTOM_MENU_MODE:
+        if not _has_complete_menu_files(CUSTOM_MENU_DIR):
+            raise MenuError("No updated menu has been saved yet.")
+        return menu_mod.load_menu(CUSTOM_MENU_DIR)
+    return menu_mod.load_menu(MENU_DIR)
 
 
 def _bill_dict(bill):
@@ -54,7 +92,7 @@ def _bill_dict(bill):
 def _resolve(req):
     """Validate quantity + resolve menu items. Returns (bill, error_dict)."""
     try:
-        m = menu_mod.load_menu(MENU_DIR)
+        m = _load_active_menu()
     except MenuError as exc:
         return None, {"menu": str(exc)}
     ok_q, qty = v.validate_quantity(req.quantity)
@@ -106,7 +144,7 @@ def health():
 @router.get("/menu")
 def get_menu():
     try:
-        m = menu_mod.load_menu(MENU_DIR)
+        m = _load_active_menu()
     except MenuError as exc:
         return {"error": str(exc)}
     return {"bases": _cat(m.bases), "pizzas": _cat(m.pizzas), "toppings": _cat(m.toppings)}

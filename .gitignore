@@ -12,6 +12,7 @@ env/
 # Local app/runtime files
 .gradio/
 *.db
+database/menu_uploads/
 
 # Node
 node_modules/
