@@ -1,17 +1,26 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Local app/runtime files
+.gradio/
+*.db
+
+# Node
+node_modules/
+
+# OS/editor junk
 .DS_Store
 Thumbs.db
 ~$*
+
+# Generated document assets
 _flow_*.png
 _pg*.png
-
-# Python / uv
-.venv/
-.gradio/
-*.db
-.pytest_cache/
-node_modules
-scripts/
-.venv
-.pytest_cache\

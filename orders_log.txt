@@ -21,3 +21,4 @@
 2026-06-28 21:37:20 | Mouli | 8790312333 | Cheese Burst | California Veggie | Jalapenos | 607.00 | 2 | 1214.00 | 0.00 | 218.52 | 1432.52 | UPI
 
 2026-06-29 03:24:44 | ss | 6788909989 | Whole Wheat | Paneer Tikka | Extra Cheese | 577.00 | 6 | 3462.00 | 346.20 | 560.84 | 3676.64 | Cash
+2026-06-29 07:00:26 | Aman Sharma | 8336831234 | Thick Crust | Farm House | Caramelised Onions | 547.00 | 3 | 1641.00 | 0.00 | 295.38 | 1936.38 | Cash
