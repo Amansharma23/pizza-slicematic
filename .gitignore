@@ -24,3 +24,7 @@ Thumbs.db
 # Generated document assets
 _flow_*.png
 _pg*.png
+
+# Secrets
+.env
+.env.local
