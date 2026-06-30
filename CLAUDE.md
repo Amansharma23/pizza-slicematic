@@ -25,6 +25,14 @@ with the brief or PRD, the brief/PRD win — fix this file.**
 Branch: **`feature/ai-conversational-layer`** (not pushed yet; sits on latest `master`).
 Detailed checklist + decisions: `docs/STAGE3_PLAN.md`. API reference: `docs/API.md`.
 
+**Synced with `master` (2026-06-30, PRs #11–#15):** UI rework + deployment config +
+`database/` restructure. Key knock-ons the AI layer already adapts to:
+- Order log is now `database/orders_log.txt` (`DATABASE_DIR` env); `core.persistence.append_order`
+  returns `(timestamp, order_id)` and IDs are sequential `SM-000001`.
+- Menu: bundled default `menu_data/` + admin-uploaded `database/menu/`; resolve via
+  `api.routes._load_active_menu()` (honours `database/menu_source.txt`). The AI tools use it.
+- A safety branch `backup/ai-pre-sync-20260630` exists if the merge ever needs auditing.
+
 **Done (chat + voice backend complete, verified live):**
 - `core/` unchanged; **`ai/`** layer added: `config`, `llm` (OpenRouter via OpenAI SDK +
   Langfuse auto-tracing drop-in), `session` (in-memory + Supabase mirror), `language` (en/hi),
