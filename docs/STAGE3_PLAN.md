@@ -36,8 +36,9 @@ Branch: `feature/ai-conversational-layer`. Additive only — the graded Stage-2 
 - [x] **5.6b** Escalations: `supabase/migrations/0002_escalations.sql` + `db/escalations.py`;
       `escalate_to_human` records a row with a summary `reason`, customer snapshot, and Langfuse
       links (transcript via messages, trace via langfuse_url/session_id). Verified live.
-- [ ] **5.7** `ai/routers/chat.py` + `ai/main.py` (FastAPI app incl. `api/routes`, CORS for
-      Next.js). _Verify: TestClient places an order → DB + .txt log._
+- [x] **5.7** `ai/routers/chat.py` (POST /chat: guardrail → agent → persist messages, per-session
+      lock) + `ai/main.py` (FastAPI app incl. `api/routes` + CORS for Next.js + /health).
+      Verified: committed tests (health/blocked/session) + live HTTP order via TestClient → DB.
 - [ ] **5.8** Voice — Deepgram STT/TTS + `ai/routers/voice.py`
       (`/voice/transcribe|respond|synthesize`). _Verify: audio sample / mock._
 

@@ -11,7 +11,6 @@ unit-testable without a database.
 
 from __future__ import annotations
 
-import asyncio
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21,7 +20,7 @@ from db import sessions as db_sessions
 # Guards the module-level dicts (cheap; the GIL covers the rest).
 _GUARD = threading.Lock()
 _SESSIONS: dict[str, "Session"] = {}
-_LOCKS: dict[str, asyncio.Lock] = {}
+_LOCKS: dict[str, threading.Lock] = {}
 
 
 @dataclass
@@ -71,12 +70,16 @@ def reset(session_id: str) -> None:
         _SESSIONS.pop(session_id, None)
 
 
-def lock_for(session_id: str) -> asyncio.Lock:
-    """Per-session async lock so one session processes one turn at a time."""
+def lock_for(session_id: str) -> threading.Lock:
+    """Per-session lock so one session processes one turn at a time.
+
+    A threading.Lock (not asyncio) because the chat route is synchronous and runs
+    in FastAPI's threadpool.
+    """
     with _GUARD:
         lock = _LOCKS.get(session_id)
         if lock is None:
-            lock = asyncio.Lock()
+            lock = threading.Lock()
             _LOCKS[session_id] = lock
         return lock
 
