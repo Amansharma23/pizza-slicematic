@@ -18,7 +18,9 @@ def no_writes(monkeypatch):
     monkeypatch.setattr(
         tools.persistence,
         "append_order",
-        lambda **kw: calls["append"].append(kw) or "ts",
+        lambda **kw: (
+            calls["append"].append(kw) or ("2026-06-30 00:00:00", "SM-000001")
+        ),
     )
     monkeypatch.setattr(
         tools.db_orders, "mirror_order", lambda **kw: calls["mirror"].append(kw)

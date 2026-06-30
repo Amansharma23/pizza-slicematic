@@ -112,7 +112,16 @@ def test_selection_valid_accepted(good):
 
 @pytest.mark.parametrize(
     "raw,mode",
-    [("1", "Cash"), ("2", "Card"), ("3", "UPI"), ("cash", "Cash"), ("UPI", "UPI")],
+    [
+        ("1", "Cash"),
+        ("2", "Card"),
+        ("3", "UPI"),
+        ("1 Cash", "Cash"),
+        ("2 Card", "Card"),
+        ("3 UPI", "UPI"),
+        ("cash", "Cash"),
+        ("UPI", "UPI"),
+    ],
 )
 def test_payment_valid(raw, mode):
     assert v.validate_payment(raw) == (True, mode)

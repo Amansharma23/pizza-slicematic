@@ -9,7 +9,6 @@ computes money or trusts client input.
 from __future__ import annotations
 
 import os
-from datetime import datetime
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -27,7 +26,15 @@ except Exception:
     db_orders = None
 
 MENU_DIR = os.environ.get("MENU_DIR", "menu_data")
+if os.environ.get("SPACE_ID"):
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "/data")
+else:
+    DATABASE_DIR = os.environ.get("DATABASE_DIR", "database")
+CUSTOM_MENU_DIR = os.path.join(DATABASE_DIR, "menu")
+MENU_SOURCE_FILE = os.path.join(DATABASE_DIR, "menu_source.txt")
 BRAND = "SliceMatic"
+DEFAULT_MENU_MODE = "Use SliceMatic default menu"
+CUSTOM_MENU_MODE = "Upload my own menu files"
 
 router = APIRouter(prefix="/api")
 
@@ -43,6 +50,36 @@ def _cat(items):
 
 def _find(items, _id):
     return next((i for i in items if i.id == _id), None)
+
+
+def _menu_file_paths(menu_dir: str) -> dict[str, str]:
+    return {
+        menu_mod.BASE_FILE: os.path.join(menu_dir, menu_mod.BASE_FILE),
+        menu_mod.PIZZA_FILE: os.path.join(menu_dir, menu_mod.PIZZA_FILE),
+        menu_mod.TOPPING_FILE: os.path.join(menu_dir, menu_mod.TOPPING_FILE),
+    }
+
+
+def _has_complete_menu_files(menu_dir: str) -> bool:
+    return all(os.path.isfile(path) for path in _menu_file_paths(menu_dir).values())
+
+
+def _load_menu_source() -> str:
+    try:
+        with open(MENU_SOURCE_FILE, "r", encoding="utf-8") as fh:
+            mode = fh.read().strip()
+    except OSError:
+        return DEFAULT_MENU_MODE
+    return mode if mode in {DEFAULT_MENU_MODE, CUSTOM_MENU_MODE} else DEFAULT_MENU_MODE
+
+
+def _load_active_menu():
+    mode = _load_menu_source()
+    if mode == CUSTOM_MENU_MODE:
+        if not _has_complete_menu_files(CUSTOM_MENU_DIR):
+            raise MenuError("No updated menu has been saved yet.")
+        return menu_mod.load_menu(CUSTOM_MENU_DIR)
+    return menu_mod.load_menu(MENU_DIR)
 
 
 def _bill_dict(bill):
@@ -63,7 +100,7 @@ def _bill_dict(bill):
 def _resolve(req):
     """Validate quantity + resolve menu items. Returns (bill, error_dict)."""
     try:
-        m = menu_mod.load_menu(MENU_DIR)
+        m = _load_active_menu()
     except MenuError as exc:
         return None, {"menu": str(exc)}
     ok_q, qty = v.validate_quantity(req.quantity)
@@ -105,6 +142,7 @@ class OrderReq(CustomerReq, SummaryReq):
 
 class ConfigReq(BaseModel):
     discount_rate: float
+    discount_threshold: int = 5
 
 
 # --------------------------------------------------------------------------- #
@@ -120,7 +158,7 @@ def health():
 @router.get("/menu")
 def get_menu():
     try:
-        m = menu_mod.load_menu(MENU_DIR)
+        m = _load_active_menu()
     except MenuError as exc:
         return {"error": str(exc)}
     return {
@@ -172,9 +210,8 @@ def place_order(req: OrderReq):
     if errors:
         return {"ok": False, "errors": errors}
 
-    ts = persistence.append_order(name=name, phone=phone, bill=bill, payment_mode=mode)
-    order_no = (
-        f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((phone, ts))) % 10000:04d}"
+    ts, order_no = persistence.append_order(
+        name=name, phone=phone, bill=bill, payment_mode=mode
     )
     if db_orders:  # best-effort mirror; never affects the .txt log above
         db_orders.mirror_order(
@@ -198,18 +235,30 @@ def place_order(req: OrderReq):
 
 @router.get("/config")
 def get_config():
-    return {"discount_rate": pricing.get_discount_rate()}
+    return {
+        "discount_rate": pricing.get_discount_rate(),
+        "discount_threshold": pricing.get_discount_threshold(),
+    }
 
 
 @router.post("/config")
 def update_config(req: ConfigReq):
     pricing.set_discount_rate(req.discount_rate)
-    return {"ok": True, "discount_rate": pricing.get_discount_rate()}
+    pricing.set_discount_threshold(req.discount_threshold)
+    return {
+        "ok": True,
+        "discount_rate": pricing.get_discount_rate(),
+        "discount_threshold": pricing.get_discount_threshold(),
+    }
 
 
 @router.get("/analytics")
-def get_analytics(filter_type: str = "All Time"):
-    data = analytics.get_analytics(filter_type)
+def get_analytics(
+    filter_type: str = "All Time",
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    data = analytics.get_analytics(filter_type, start_date, end_date)
     # Convert pandas DataFrames to dicts for JSON serialization
     return {
         "total_orders": data["total_orders"],

@@ -13,7 +13,7 @@ FDE Academy Programme · PizzaFlow Applied Project · **Group 3**
 
 A full-stack AI pizza-ordering system for **SliceMatic**, a single-outlet pizza delivery brand
 in New Ashok Nagar, Delhi. Delivered across three stages (PRD + economics → Gradio MVP →
-full-stack app). This repository currently holds the **Stage 1** deliverables.
+full-stack app). This repository includes the **Stage 2 Gradio MVP**.
 
 ## Team — Group 3
 
@@ -77,7 +77,46 @@ The application uses `uv` for lightning-fast dependency management and virtual e
    ```bash
    uv run python app.py
    ```
-3. Open your browser and navigate to `http://127.0.0.1:7861` to view the application.
+3. Open your browser and navigate to `http://127.0.0.1:7860` to view the application.
+
+## Stage 2 — Gradio MVP
+
+The Stage 2 MVP is the working pizza-ordering app required by the assignment brief.
+
+What it covers:
+
+- Customer intake with strict name and Indian mobile-number validation.
+- Runtime menu loading from `ID;Name;Price` text files.
+- Defensive menu parsing for swapped or malformed files.
+- Quantity validation from 1 to 10.
+- 10% discount when quantity is at least 5.
+- GST at 18% on the post-discount amount.
+- Mock payment flow: `1 Cash`, `2 Card`, `3 UPI`.
+- Parseable order logging in `database/orders_log.txt`.
+- Admin menu management with default menu fallback and custom menu updates.
+
+Useful Stage 2 files:
+
+- `STAGE2_RUN.md` — concise run and smoke-test guide.
+- `app.py` — Gradio app mounted on FastAPI.
+- `core/` — validation, menu parsing, pricing, and persistence logic.
+- `menu_data/` — SliceMatic default menu.
+- `database/menu/` — saved custom menu files after admin upload.
+- `database/orders_log.txt` — completed order log.
+
+Run the judge-friendly smoke test:
+
+```bash
+uv run python scripts/stage2_smoke_test.py
+```
+
+Or on Windows without `uv`:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\stage2_smoke_test.py
+```
+
+The smoke test starts the app on a test port, loads swapped menu files, places one order, verifies pricing, and writes a judge-demo log to `database/smoke_test_data/smoke_orders_log.txt`.
 
 ## CI/CD Pipeline & Deployment
 

@@ -38,6 +38,22 @@ def test_ignores_duplicate_ids():
     assert len(items) == 1
 
 
+def test_skips_only_special_characters_columns():
+    items = menu.parse_menu_lines(
+        [
+            "***;Thin Crust;149",  # ID has only special characters
+            "B1;@@@;149",  # Name has only special characters
+            "B2;Thick Crust;$$$",  # Price has only special characters
+            "B-3;Thin Crust 🍕;149",  # Valid (columns contain letters/digits along with special characters)
+            "B4;Thick Crust;179.50",  # Valid
+        ]
+    )
+    assert [i.id for i in items] == ["B-3", "B4"]
+    assert [i.name for i in items] == ["Thin Crust 🍕", "Thick Crust"]
+    assert items[0].price == 149.0
+    assert items[1].price == 179.50
+
+
 def test_load_category_missing_file_raises(tmp_path):
     with pytest.raises(MenuError):
         menu.load_category(str(tmp_path / "nope.txt"), "Base")

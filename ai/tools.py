@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 
 from ai import guardrails
-from core import menu as menu_mod
+from api.routes import _load_active_menu  # shared live-menu resolver (default/custom)
 from core import persistence, pricing
 from core import validation as v
 from core.menu import MenuError
@@ -27,8 +27,6 @@ except Exception:  # additive layer optional
     db_orders = db_sessions = db_escalations = None
 
 log = logging.getLogger(__name__)
-
-MENU_DIR = os.environ.get("MENU_DIR", "menu_data")
 
 
 # --------------------------------------------------------------------------- #
@@ -155,7 +153,7 @@ def _resolve_lines(items) -> tuple[list[Bill], list[str]]:
     errors: list[str] = []
     if not items:
         return bills, ["The order has no items."]
-    menu = menu_mod.load_menu(MENU_DIR)  # may raise MenuError
+    menu = _load_active_menu()  # may raise MenuError
     for idx, line in enumerate(items, 1):
         base = _find(menu.bases, line.get("base_id"))
         pizza = _find(menu.pizzas, line.get("pizza_id"))
@@ -194,7 +192,7 @@ def _bill_str(b: Bill) -> str:
 
 def _get_menu(args, session) -> str:
     try:
-        menu = menu_mod.load_menu(MENU_DIR)
+        menu = _load_active_menu()
     except MenuError as exc:
         return f"Menu unavailable: {exc}"
 
@@ -276,14 +274,19 @@ def _confirm_and_save_order(args, session) -> str:
     ).strip()
     language = session.language if session else None
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    order_no = (
-        f"SM-{datetime.now().strftime('%Y%m%d')}-{abs(hash((phone, ts))) % 10000:04d}"
-    )
+    order_no = None
 
     for bill in bills:
-        persistence.append_order(
-            name=name, phone=phone, bill=bill, payment_mode=mode, timestamp=ts
+        _written_ts, oid = persistence.append_order(
+            name=name,
+            phone=phone,
+            bill=bill,
+            payment_mode=mode,
+            timestamp=ts,
+            order_id=order_no,  # share one id across all lines of a multi-line order
         )
+        if order_no is None:
+            order_no = oid
         if db_orders:
             db_orders.mirror_order(
                 name=name,
