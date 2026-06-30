@@ -18,19 +18,32 @@ Branch: `feature/ai-conversational-layer`. Additive only — the graded Stage-2 
 - [x] **4. Dual write** — after `core.persistence.append_order(...)`, best-effort mirror into the
       `orders` table. Wired (guarded import) into `app.py` `pay()` (source=`gradio`) +
       `api/routes.place_order` (source=`api`). `core/` stays DB-free. Verified live; 60 tests pass.
-- [ ] **5. AI layer** (`ai/` package):
-      - `config.py` — load `.env`, fail fast on missing required vars
-      - `session.py` — in-memory session store (mirrored to `sessions` table)
-      - `tools.py` — 4 tools → real `core/` fns (get_menu, calculate_order_price,
-        confirm_and_save_order, escalate_to_human)
-      - `agent.py` — OpenRouter tool loop + fallback chain (primary → 2 fallbacks)
-      - `guardrails.py` — input (pre-LLM) + output (reuse `core.validation`)
-      - `observability.py` — Langfuse trace wrapper (never breaks main flow)
-      - `routers/chat.py` — `POST /chat`
-      - `routers/voice.py` — `POST /voice/transcribe|respond|synthesize` (Deepgram)
-- [ ] **6. Frontend** — OPEN decision: Next.js vs vanilla single-file. Chat + voice panels.
-- [ ] **7. Wire + deploy** — mount AI routers into the FastAPI app; update Dockerfile/CI; demo checklist.
+### 5. AI layer (`ai/` package) — chat first, voice after. Each sub-step is tested before the next.
+- [ ] **5.1** Deps (`openai` for OpenRouter, `langfuse`) + `ai/config.py` — load `.env`, fail
+      fast on missing required vars. _Verify: import config, settings populated._
+- [ ] **5.2** `db/sessions.py` + `db/messages.py` — best-effort writes (same pattern as
+      `db/orders.py`). _Verify: live insert/read-back/cleanup._
+- [ ] **5.3** `ai/session.py` (in-memory store, mirrors to `sessions`) + `ai/language.py`
+      (en/hi detection). _Verify: unit tests._
+- [ ] **5.4** `ai/tools.py` — 4 tool schemas + `execute_tool()` calling `core/`
+      (get_menu, calculate_order_price, confirm_and_save_order, escalate_to_human).
+      _Verify: unit-test each tool against the default menu, no LLM._
+- [ ] **5.5** `ai/guardrails.py` — input (pre-LLM injection/abuse/off-topic) + output
+      (reuse `core.validation` + menu existence). _Verify: unit tests._
+- [ ] **5.6** `ai/observability.py` (Langfuse, no-op safe) + `ai/agent.py` (OpenRouter tool
+      loop, cap 5 rounds, fallback chain). _Verify: live one-turn order._
+- [ ] **5.7** `ai/routers/chat.py` + `ai/main.py` (FastAPI app incl. `api/routes`, CORS for
+      Next.js). _Verify: TestClient places an order → DB + .txt log._
+- [ ] **5.8** Voice — Deepgram STT/TTS + `ai/routers/voice.py`
+      (`/voice/transcribe|respond|synthesize`). _Verify: audio sample / mock._
 
-## Open decisions
-- Frontend framework (Next.js vs vanilla).
+- [ ] **6. Frontend** — Next.js (DECIDED), chat + voice panels, calls the FastAPI endpoints.
+- [ ] **7. Wire + deploy** — Dockerfile/CI for the AI service; demo checklist.
+
+## Decisions
+- Architecture: logic stays in `core/`; AI layer orchestrates via tools; FastAPI endpoints feed Next.js.
+- Supabase via `supabase-py`; menu still loads from text files; `.txt` log stays primary.
+- Frontend: **Next.js**.
+
+## Open
 - Whether multi-line orders (cart of several pizzas) are in scope for the demo, or single-config only.
