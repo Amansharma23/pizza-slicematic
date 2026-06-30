@@ -1,0 +1,501 @@
+--- Slide 1 ---
+
+SliceMatic
+MVP Live Demo
+Validated, file-based digital ordering system — built to spec, running live.
+
+Slicematic Application
+Group 3
+Mouli Murakambattu · Shaik Mohammed Pasha · Aman Sharma · Saurabh Sekhar · Sushant Kumar
+FDE Academy · PizzaFlow Applied Project · 30 June 2026
+--- Slide 2 ---
+WHAT WE BUILT
+The MVP in one minute
+A guided, fully-validated pizza ordering flow that prices every order deterministically and persists it in a parseable log — no manual math, no crashes, every order captured.
+
+
+8 / 8
+Edge cases handled 
+Zero unhandled crashes
+
+
+100%
+Bills computed by one deterministic engine
+
+
+All
+Order appended to a parseable log
+
+
+0
+Code changes to swap the menu files
+
+How it works under the hood
+Menu loaded at runtime from 3 .txt files (Base · Pizza · Topping) — defensively parsed, never hardcoded.
+Pricing engine runs 6 fixed steps: unit price → subtotal → 10% discount at qty ≥ 5 → 18% GST on the post-discount total → payable.
+Completed orders are appended to orders_log.txt, pipe-separated, one block each — ready for AOV, peak-hour & break-even analysis.
+SliceMatic · PizzaFlow MVP Demo
+2
+--- Slide 3 ---
+DEMO WALKTHROUGH
+The order journey — what you'll see
+Six guided steps from launch to a confirmed, saved order. Every step validates input and loops back on anything invalid.
+
+
+1
+Customer intake
+Name + phone, validated
+
+
+2
+Menu selection
+Base · Pizza · Topping by number
+
+
+3
+Quantity
+1–10; 10% off at qty ≥ 5
+
+
+4
+Itemised bill
+Engine computes discount + GST
+
+
+5
+Payment
+Cash / Card / UPI + confirm
+
+
+6
+Saved & confirmed
+Appended to orders_log.txt
+SliceMatic · PizzaFlow MVP Demo
+3
+--- Slide 4 ---
+STEP 1 · CUSTOMER INTAKE
+Name & phone — validated on entry
+
+Name  alphabets & spaces only, 2–40 characters.
+
+Phone  exactly 10 digits, must start with 6, 7, 8 or 9.
+
+Session  timestamp logged the moment the order starts.
+
+Rejected input  gets a specific message, then re-prompts.
+1
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+Screenshot
+Name + phone entry screen (try a valid name & 10-digit number)
+SliceMatic · PizzaFlow MVP Demo
+4
+--- Slide 5 ---
+STEP 2 · MENU SELECTION
+Pick base, pizza & topping — by number
+
+Loaded live  from 3 .txt files — names & prices in INR.
+
+One of each  a Base, a Pizza and a Topping per order.
+
+Select by number  only valid in-range numbers accepted.
+
+No hardcoding  edit the file → new menu, zero code change.
+2
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Menu screen showing Base / Pizza / Topping numbered lists
+SliceMatic · PizzaFlow MVP Demo
+5
+--- Slide 6 ---
+STEP 3 · QUANTITY
+Quantity 1–10 — discount auto-triggers
+
+Integer 1–10  rejects 0, 11, negatives, floats & text.
+
+Capacity cap  max 10 pizzas per order, with an explanation.
+
+10% discount  applies automatically at quantity ≥ 5.
+3
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Quantity prompt (enter 5 to trigger the 10% discount)
+SliceMatic · PizzaFlow MVP Demo
+6
+
+--- Slide 7 ---
+STEP 4 · ITEMISED BILL
+The bill — every rupee accounted for
+
+Itemised  Base + Pizza + Topping, qty, unit price, subtotal.
+
+Discount line  10% shown when quantity ≥ 5.
+
+GST @ 18%  charged on the post-discount taxable amount.
+
+Final payable  rounded to 2 decimals, INR on every line.
+4
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Itemised bill: unit price, subtotal, discount, GST, total
+SliceMatic · PizzaFlow MVP Demo
+7
+--- Slide 8 ---
+STEP 5 · PAYMENT
+Payment mode & confirmation
+
+Three modes  Cash, Card or UPI — exactly these.
+
+Confirmation  a mode-appropriate confirmation is shown.
+
+Invalid mode  rejected and re-prompted to retry.
+
+MVP scope  selection + confirm (no live gateway yet).
+5
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Payment selection — Cash / Card / UPI + confirmation message
+SliceMatic · PizzaFlow MVP Demo
+8
+--- Slide 9 ---
+STEP 6 · SAVED & CONFIRMED
+Order confirmed — and persisted
+
+Confirmed  the customer sees a clear success message.
+
+Appended  the order is written to orders_log.txt.
+
+Parseable  pipe-separated, one block per order.
+
+Analysable  this log is the raw input for Part B economics.
+6
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Order-confirmed screen after a successful order
+SliceMatic · PizzaFlow MVP Demo
+9
+--- Slide 10 ---
+ROBUSTNESS
+Validation & edge cases — live proof
+The grader will throw bad input at this. Here's the system refusing to break — every rejection is specific and re-prompts.
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Error: Phone starts with 1
+Phone starts with 1
+"Must be 10 digits & start with 6/7/8/9."
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Error: Quantity = 11
+Quantity = 11
+"Enter an integer between 1 and 10."
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Error: Item number out of range
+Item number out of range
+"Pick a valid number from the list."
+SliceMatic · PizzaFlow MVP Demo
+10
+--- Slide 11 ---
+PERSISTENCE
+Every order, captured — orders_log.txt
+This is the data the business has never had. Each completed order is one parseable block.
+
+Fields recorded per order
+
+order_id
+timestamp
+name
+phone
+base
+pizza
+topping
+unit price
+quantity
+subtotal
+discount
+GST
+final total
+payment mode
+
+
+
+
+
+orders_log.txt
+SM-000027 | 2026-06-23 19:42:10 | Rajan Sharma | 9876543210 |
+  Cheese Burst | BBQ Chicken | Extra Cheese |
+  677.00 | 5 | 3385.00 | 338.50 | 548.37 |
+  3594.87 | UPI
+ 
+SM-000026 | 2026-06-23 19:55:02 | Aman S | 8123456780 |
+  Thin Crust | Margherita | Jalapenos |
+  397.00 | 2 | 794.00 | 0.00 | 142.92 |
+  936.92 | Cash
+Pipe-separated · one block per order · blank line between — machine-parseable.
+SliceMatic · PizzaFlow MVP Demo
+11
+--- Slide 12 ---
+BEYOND THE MVP SCOPE · DELIVERED EARLY
+The owner console — PIN-gated admin
+The PRD parked admin for Stage 3. We shipped it now — a PIN-protected console behind the order screen's dropdown gives the owner full control and visibility.
+
+Menu control  add / edit items & prices
+
+Discount rules  set % and the qty threshold
+
+Analytics dashboard  top sellers & combinations
+
+Order-log export  full history, downloadable
+
+PIN-gated  — owner enters a 6-digit PIN to enter the console.
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Admin dropdown + PIN entry screen
+SliceMatic · PizzaFlow MVP Demo
+12
+--- Slide 13 ---
+ADMIN · MENU & PRICING
+Owner controls the menu & the discount
+
+Edit the menu  add, rename or re-price any base, pizza or topping — no developer, no redeploy.
+
+Set the discount %  the owner chooses the bulk-discount rate (e.g. 10%).
+
+Set the threshold  choose the quantity at which the discount kicks in (e.g. ≥ 5).
+
+Engine stays deterministic  changes flow straight into the same pricing engine.
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+Screenshot
+Admin menu editor + discount % and quantity-threshold controls
+SliceMatic · PizzaFlow MVP Demo
+13
+--- Slide 14 ---
+ADMIN · ANALYTICS
+The dashboard the owner never had
+The order log, turned into decisions — what sells, and what sells together.
+
+
+Top-selling items  — rank the menu by volume to promote winners and retire laggards.
+Top combinations  — the base+pizza+topping baskets that drive AOV; fuels upsell prompts.
+SliceMatic · PizzaFlow MVP Demo
+14
+--- Slide 15 ---
+ADMIN · ORDER LOG
+Every order — viewable & downloadable
+
+Full order history  the complete log rendered as a clean table in the console.
+
+One-click download  export the orders for accounting, GST filing or analysis.
+
+Owner-only  behind the PIN — customers never see it.
+
+Decision-ready  the same data behind every Part B metric.
+
+
+
+
+
+
+
+moulsai2296-pizzaflow-v2.hf.space
+
+Screenshot
+Admin order-log table with the download button
+SliceMatic · PizzaFlow MVP Demo
+15
+--- Slide 16 ---
+WHY THE NUMBERS ARE TRUSTWORTHY
+Pricing engine — the worked example, verified
+One deterministic path, six steps, same result every time. This is the client's reference order — the app reproduces it to the paisa.
+
+Base — Cheese Burst
+₹229.00
+Pizza — BBQ Chicken
+₹379.00
+
+Topping — Extra Cheese
+₹69.00
+Unit price
+₹677.00
+
+Subtotal (× qty 5)
+₹3,385.00
+Discount — 10% (qty ≥ 5)
+− ₹338.50
+
+Taxable amount
+₹3,046.50
+GST @ 18%
+₹548.37
+
+Total payable
+₹3,594.87
+THE SIX STEPS
+
+1
+Unit price = Base + Pizza + Topping
+
+2
+Subtotal = Unit price × Quantity
+
+3
+Discount = 10% if Qty ≥ 5, else ₹0
+
+4
+Taxable = Subtotal − Discount
+
+5
+GST = 18% of Taxable amount
+
+6
+Total = Taxable + GST
+SliceMatic · PizzaFlow MVP Demo
+16
+--- Slide 17 ---
+ACCOUNTABILITY
+PRD promise → delivered
+Every Stage 2 commitment from our PRD, mapped to what's running in the MVP.
+
+Delivered ahead of plan:  admin menu & discount control, analytics dashboard and order-log export — all originally Stage 3.
+SliceMatic · PizzaFlow MVP Demo
+17
+--- Slide 18 ---
+PRODUCTION READINESS
+How we know it's ready to ship
+Two lenses — the engineering pipeline that ships it safely, and the product validation that proves it's correct.
+
+
+Software & engineering
+Automated CI/CD — GitHub Actions tests every PR and blocks on any failure.
+Zero-touch deploys — approved code ships to Hugging Face with no human in the loop.
+Environment parity — Docker makes local and production exactly identical.
+Fault tolerance — a persistent storage volume protects data across restarts.
+
+
+Product & features
+100% PRD traceability — every shipped feature maps to a documented requirement.
+Edge-case validation — the UI blocks invalid input and impossible discounts.
+Validated economics — the pricing engine aligns with the GST and margin models.
+End-to-end verified — the full lifecycle works — landing page to owner dashboard.
+SliceMatic · PizzaFlow MVP Demo
+18
+--- Slide 19 ---
+ROADMAP
+What's next — Stage 3
+The MVP's structured log is the foundation everything next is built on.
+
+
+STAGE 3
+Database-backed platform
+Web UI replaces the CLI flow
+Supabase Postgres + Auth
+Concurrency-safe writes + managed backups
+
+
+STAGE 3
+Conversational AI ordering
+Natural-language orders via OpenRouter
+Menu-grounded extraction
+Pricing stays deterministic; graceful fallback
+
+
+STAGE 3
+Growth & intelligence
+Demand forecasting & recommendations
+Aggregator integration
+Multi-outlet support
+SliceMatic · PizzaFlow MVP Demo
+19
+--- Slide 20 ---
+
+Try it yourself — it's live.
+Place a real order in the MVP right now.
+
+huggingface.co/spaces/moulsai2296/pizzaflow_v2
+Thank you — Group 3
+Mouli Murakambattu · Shaik Mohammed Pasha · Aman Sharma · Saurabh Sekhar · Sushant Kumar
