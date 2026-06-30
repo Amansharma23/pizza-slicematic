@@ -20,6 +20,52 @@ with the brief or PRD, the brief/PRD win — fix this file.**
 
 ---
 
+## ⏩ Stage 3 — current status & handoff (read this first)
+
+Branch: **`feature/ai-conversational-layer`** (not pushed yet; sits on latest `master`).
+Detailed checklist + decisions: `docs/STAGE3_PLAN.md`. API reference: `docs/API.md`.
+
+**Done (chat + voice backend complete, verified live):**
+- `core/` unchanged; **`ai/`** layer added: `config`, `llm` (OpenRouter via OpenAI SDK +
+  Langfuse auto-tracing drop-in), `session` (in-memory + Supabase mirror), `language` (en/hi),
+  `tools` (5: get_menu, calculate_order_price, validate_customer, confirm_and_save_order,
+  escalate_to_human → all call `core/`), `guardrails` (heuristics + cheap-LLM classifier, fail-open;
+  deterministic output), `agent` (tool loop ≤5 rounds, app-level fallback, warm persona @ temp 0.5),
+  `deepgram` (STT/TTS), `routers/chat.py` + `routers/voice.py`, `main.py` (FastAPI + CORS + /health).
+- **`db/`** additive Supabase: `orders` mirror, `sessions`, `messages`, `escalations` — all best-effort
+  with transient-retry (`db/client.execute_query`). `.txt` log stays primary.
+- Supabase migrations **applied**: `0001_init_ai_schema.sql` (orders/sessions/messages),
+  `0002_escalations.sql`. Run new migrations manually in the SQL editor (no DDL via client).
+- Dev tooling: pre-commit (isort/black/ruff/bandit), Claude PostToolUse hook, CI `lint` job.
+- `postman/SliceMatic.postman_collection.json`, `docs/API.md`. **103 tests pass.**
+
+**Run it:**
+- AI service: `uv run uvicorn ai.main:app --reload --port 7860` (docs at `/docs`)
+- Graded Gradio app (separate): `uv run python app.py`
+- Tests/lint: `uv run pytest` · `uv run pre-commit run --all-files`
+
+**Env:** `.env` (gitignored) holds the keys; `.env.example` is the template. Models:
+`google/gemini-2.5-flash` + fallbacks `anthropic/claude-haiku-4.5`, `openai/gpt-4o-mini`.
+Optional `LANGFUSE_PROJECT_ID` → clickable Langfuse links on escalations. `AI_CORS_ORIGINS`
+for the Next.js origin.
+
+**Next session — NOT done yet:**
+1. **Step 6 — Next.js frontend** (chat + voice panels): call `POST /chat` and `/voice/*`;
+   MediaRecorder (`audio/webm;codecs=opus`), 3-min countdown, play `audio/mpeg` from synthesize,
+   store `session_id` in localStorage. Set `AI_CORS_ORIGINS` to the dev origin.
+2. **Step 7 — deploy the AI service**: the HF `Dockerfile` currently runs `app.py` (Gradio) on 7860.
+   Decide how to ship `ai.main` (separate Space/port, or one combined process) + update CI.
+3. Before any public deploy: **auth / rate-limiting** on `/chat` and `/voice/*` (none yet).
+4. Optional hardening: persist `tool`-role messages; rehydrate `history` from `messages` on restart;
+   **Redis** for sessions if running >1 worker/instance.
+
+**Conventions for the AI layer:** keep `core/` free of web/DB/LLM imports; tools return plain
+strings for the LLM and recompute money via `core/`; every Supabase call is best-effort (never
+blocks an order); committed tests must run **without** keys/DB (lazy config + monkeypatching),
+live checks go in throwaway scripts that clean up after themselves.
+
+---
+
 ## The one rule that drives the architecture
 
 The **grader swaps the three menu `.txt` files** before evaluating, runs the app, and

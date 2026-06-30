@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from db.client import get_client
+from db.client import execute_query, get_client
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def add_message(
     # Drop None values so DB defaults/nullables apply cleanly.
     row = {k: v for k, v in row.items() if v is not None}
     try:
-        res = client.table("messages").insert(row).execute()
+        res = execute_query(client.table("messages").insert(row))
         return res.data[0]["id"] if res.data else None
     except Exception as exc:
         log.warning("Supabase message insert failed (%s/%s): %s", session_id, role, exc)

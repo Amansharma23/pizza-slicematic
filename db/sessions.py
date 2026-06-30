@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from db.client import get_client
+from db.client import execute_query, get_client
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def upsert_session(session_id: str, **fields) -> bool:
     row["id"] = session_id
     row["last_activity_at"] = _now()
     try:
-        client.table("sessions").upsert(row).execute()
+        execute_query(client.table("sessions").upsert(row))
         return True
     except Exception as exc:
         log.warning("Supabase session upsert failed (%s): %s", session_id, exc)

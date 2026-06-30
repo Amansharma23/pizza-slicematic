@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from db.client import get_client
+from db.client import execute_query, get_client
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def mirror_order(
         "logged_at": timestamp,
     }
     try:
-        client.table("orders").insert(row).execute()
+        execute_query(client.table("orders").insert(row))
         return order_no
     except Exception as exc:
         log.warning("Supabase order mirror failed (order %s): %s", order_no, exc)

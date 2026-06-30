@@ -39,8 +39,11 @@ Branch: `feature/ai-conversational-layer`. Additive only — the graded Stage-2 
 - [x] **5.7** `ai/routers/chat.py` (POST /chat: guardrail → agent → persist messages, per-session
       lock) + `ai/main.py` (FastAPI app incl. `api/routes` + CORS for Next.js + /health).
       Verified: committed tests (health/blocked/session) + live HTTP order via TestClient → DB.
-- [ ] **5.8** Voice — Deepgram STT/TTS + `ai/routers/voice.py`
-      (`/voice/transcribe|respond|synthesize`). _Verify: audio sample / mock._
+- [x] **5.8** Voice — `ai/deepgram.py` (httpx REST) + `ai/routers/voice.py`
+      (`/voice/transcribe` with 3-min cap, `/voice/respond`, `/voice/synthesize`).
+      Verified live: TTS→STT round-trip @ 0.998 confidence; committed cap/blocked tests.
+- [x] **5.9** DB retry (`db/client.execute_query`), Postman collection
+      (`postman/SliceMatic.postman_collection.json`), API docs (`docs/API.md`).
 
 - [ ] **6. Frontend** — Next.js (DECIDED), chat + voice panels, calls the FastAPI endpoints.
 - [ ] **7. Wire + deploy** — Dockerfile/CI for the AI service; demo checklist.
