@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +23,35 @@ from api.routes import router as api_router
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="SliceMatic AI", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Warm up clients + the OpenRouter connection at boot so the first real
+    request is fast (otherwise it eats ~7-19s of cold-start). Best-effort: a
+    warmup failure (no keys/network) must never stop the server from starting.
+    """
+    try:
+        from ai import observability, tools
+        from ai.config import get_settings
+        from ai.llm import get_client
+        from db.client import get_client as get_db
+
+        settings = get_settings()
+        observability.get_langfuse()
+        get_db()
+        tools._load_active_menu()
+        get_client().chat.completions.create(
+            model=settings.primary_model,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+        )
+        log.info("AI warmup complete")
+    except Exception as exc:
+        log.warning("AI warmup skipped: %s", exc)
+    yield
+
+
+app = FastAPI(title="SliceMatic AI", version="0.1.0", lifespan=lifespan)
 
 # CORS for the Next.js frontend. Comma-separated origins in AI_CORS_ORIGINS,
 # default "*" for the demo (we use no cookies, so wildcard is fine).

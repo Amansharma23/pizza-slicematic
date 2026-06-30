@@ -13,14 +13,14 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ai import agent, deepgram, guardrails
 from ai import session as sess
 from ai.language import detect
-from db import messages as db_messages
+from ai.routers.chat import _persist_turn
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -64,29 +64,27 @@ class VoiceRespondRequest(BaseModel):
 
 
 @router.post("/voice/respond")
-def respond(req: VoiceRespondRequest) -> dict:
+def respond(req: VoiceRespondRequest, background: BackgroundTasks) -> dict:
     session_id = req.session_id or uuid.uuid4().hex
     session = sess.get_or_create(session_id, channel="voice")
     session.language = detect(req.transcript)
 
     with sess.lock_for(session_id):
-        sess.mirror(session)
-        db_messages.add_message(session_id, "user", req.transcript, channel="voice")
         check = guardrails.check_input(req.transcript)
-        if not check.ok:
-            db_messages.add_message(
-                session_id, "assistant", check.message, channel="voice"
-            )
-            return {"reply": check.message, "session_id": session_id, "blocked": True}
-        reply = agent.run_turn(session, req.transcript)
-        db_messages.add_message(session_id, "assistant", reply, channel="voice")
-        sess.mirror(session)
+        if check.ok:
+            reply = agent.run_turn(session, req.transcript)
+            blocked = False
+        else:
+            reply = check.message
+            blocked = True
+
+    background.add_task(_persist_turn, session, req.transcript, reply, "voice")
 
     return {
         "reply": reply,
         "session_id": session_id,
         "escalated": session.human_escalated,
-        "blocked": False,
+        "blocked": blocked,
     }
 
 

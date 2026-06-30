@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from ai import agent, guardrails
@@ -22,6 +22,19 @@ from db import messages as db_messages
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _persist_turn(session, user_text: str, reply: str, channel: str) -> None:
+    """Best-effort persistence, run in the background after the response is sent.
+
+    Mirror the session first (FK parent), then store both messages. Never raises.
+    """
+    try:
+        sess.mirror(session)
+        db_messages.add_message(session.id, "user", user_text, channel=channel)
+        db_messages.add_message(session.id, "assistant", reply, channel=channel)
+    except Exception as exc:
+        log.warning("Background persist failed (%s): %s", session.id, exc)
 
 
 class ChatRequest(BaseModel):
@@ -37,28 +50,26 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest) -> ChatResponse:
+def chat(req: ChatRequest, background: BackgroundTasks) -> ChatResponse:
     session_id = req.session_id or uuid.uuid4().hex
     session = sess.get_or_create(session_id, channel="chat")
     session.language = detect(req.message)
 
     with sess.lock_for(session_id):
-        sess.mirror(session)  # ensure the session row exists (FK parent)
-        db_messages.add_message(session_id, "user", req.message, channel="chat")
-
         check = guardrails.check_input(req.message)
-        if not check.ok:
-            db_messages.add_message(
-                session_id, "assistant", check.message, channel="chat"
-            )
-            return ChatResponse(
-                reply=check.message, session_id=session_id, blocked=True
-            )
+        if check.ok:
+            reply = agent.run_turn(session, req.message)
+            blocked = False
+        else:
+            reply = check.message
+            blocked = True
 
-        reply = agent.run_turn(session, req.message)
-        db_messages.add_message(session_id, "assistant", reply, channel="chat")
-        sess.mirror(session)  # status may have changed (ordered / escalated)
+    # Persist off the response path — runs after the response is sent.
+    background.add_task(_persist_turn, session, req.message, reply, "chat")
 
     return ChatResponse(
-        reply=reply, session_id=session_id, escalated=session.human_escalated
+        reply=reply,
+        session_id=session_id,
+        escalated=session.human_escalated,
+        blocked=blocked,
     )

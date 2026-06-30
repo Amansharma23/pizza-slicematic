@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import ai.routers.chat as chat_mod
 import ai.routers.voice as voice_mod
 from ai import session as sess
 from ai.main import app
@@ -10,8 +11,9 @@ client = TestClient(app)
 
 @pytest.fixture
 def no_db(monkeypatch):
+    # Persistence runs in the background via chat._persist_turn (shared by voice).
     monkeypatch.setattr(voice_mod.sess, "mirror", lambda s: True)
-    monkeypatch.setattr(voice_mod.db_messages, "add_message", lambda *a, **k: None)
+    monkeypatch.setattr(chat_mod.db_messages, "add_message", lambda *a, **k: None)
 
 
 def test_voice_cap_triggers_call_ended(monkeypatch):
