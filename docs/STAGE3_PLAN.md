@@ -30,8 +30,12 @@ Branch: `feature/ai-conversational-layer`. Additive only — the graded Stage-2 
       _Verify: unit-test each tool against the default menu, no LLM._
 - [ ] **5.5** `ai/guardrails.py` — input (pre-LLM injection/abuse/off-topic) + output
       (reuse `core.validation` + menu existence). _Verify: unit tests._
-- [ ] **5.6** `ai/observability.py` (Langfuse, no-op safe) + `ai/agent.py` (OpenRouter tool
-      loop, cap 5 rounds, fallback chain). _Verify: live one-turn order._
+- [x] **5.6** `ai/observability.py` (Langfuse auto-tracing drop-in) + `ai/agent.py` (OpenRouter
+      tool loop, cap 5 rounds, app-level fallback chain, warm persona @ temp 0.5). Verified live:
+      2-turn order placed end-to-end; fallback chain proven; model IDs fixed to valid OpenRouter ids.
+- [x] **5.6b** Escalations: `supabase/migrations/0002_escalations.sql` + `db/escalations.py`;
+      `escalate_to_human` records a row with a summary `reason`, customer snapshot, and Langfuse
+      links (transcript via messages, trace via langfuse_url/session_id). Verified live.
 - [ ] **5.7** `ai/routers/chat.py` + `ai/main.py` (FastAPI app incl. `api/routes`, CORS for
       Next.js). _Verify: TestClient places an order → DB + .txt log._
 - [ ] **5.8** Voice — Deepgram STT/TTS + `ai/routers/voice.py`

@@ -181,11 +181,21 @@ def test_validate_customer_nothing_provided():
     assert "No customer details" in out
 
 
-def test_escalate_sets_flags():
-    s = Session(id="e1")
+def test_escalate_sets_flags_and_records(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(tools.db_sessions, "upsert_session", lambda sid, **kw: True)
+    monkeypatch.setattr(
+        tools.db_escalations,
+        "add_escalation",
+        lambda **kw: captured.__setitem__("esc", kw) or "esc-id",
+    )
+    s = Session(id="e1", channel="chat", language="en")
     out = tools.execute_tool("escalate_to_human", {"reason": "wants a human"}, s)
     assert s.human_escalated is True and s.status == "escalated"
     assert "team member" in out.lower()
+    assert captured["esc"]["reason"] == "wants a human"
+    assert captured["esc"]["session_id"] == "e1"
+    assert captured["esc"]["langfuse_session_id"] == "e1"
 
 
 def test_unknown_tool():

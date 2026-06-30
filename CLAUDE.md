@@ -202,8 +202,8 @@ DEEPGRAM_API_KEY
 LANGFUSE_PUBLIC_KEY
 LANGFUSE_SECRET_KEY
 LANGFUSE_HOST
-PRIMARY_MODEL        = google/gemini-2.0-flash-exp
-FALLBACK_MODEL_1     = anthropic/claude-haiku-3-5
+PRIMARY_MODEL        = google/gemini-2.5-flash
+FALLBACK_MODEL_1     = anthropic/claude-haiku-4.5
 FALLBACK_MODEL_2     = openai/gpt-4o-mini
 # Only if Supabase is adopted:
 SUPABASE_URL

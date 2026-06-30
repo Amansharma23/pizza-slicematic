@@ -21,8 +21,8 @@ except Exception:  # python-dotenv absent — env may still be set by the host
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-DEFAULT_PRIMARY = "google/gemini-2.0-flash-exp"
-DEFAULT_FALLBACK_1 = "anthropic/claude-haiku-3-5"
+DEFAULT_PRIMARY = "google/gemini-2.5-flash"
+DEFAULT_FALLBACK_1 = "anthropic/claude-haiku-4.5"
 DEFAULT_FALLBACK_2 = "openai/gpt-4o-mini"
 DEFAULT_GUARDRAIL = "openai/gpt-4o-mini"  # cheap/fast model for the input classifier
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"

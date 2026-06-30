@@ -20,9 +20,11 @@ from core.menu import MenuError
 from core.models import Bill, MenuItem
 
 try:
+    from db import escalations as db_escalations
     from db import orders as db_orders
+    from db import sessions as db_sessions
 except Exception:  # additive layer optional
-    db_orders = None
+    db_orders = db_sessions = db_escalations = None
 
 log = logging.getLogger(__name__)
 
@@ -124,7 +126,13 @@ TOOL_DEFINITIONS = [
             "or the request can't be resolved.",
             "parameters": {
                 "type": "object",
-                "properties": {"reason": {"type": "string"}},
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "A 1-2 sentence summary of the conversation so far "
+                        "and why a human is needed (the admin reads this at a glance).",
+                    }
+                },
                 "required": ["reason"],
             },
         },
@@ -299,10 +307,41 @@ def _confirm_and_save_order(args, session) -> str:
     )
 
 
+def _langfuse_session_url(session_id: str) -> str | None:
+    """Build a clickable Langfuse session URL if a project id is configured."""
+    host = os.environ.get("LANGFUSE_BASE_URL") or os.environ.get("LANGFUSE_HOST")
+    project = os.environ.get("LANGFUSE_PROJECT_ID")
+    if host and project:
+        return f"{host.rstrip('/')}/project/{project}/sessions/{session_id}"
+    return None
+
+
 def _escalate_to_human(args, session) -> str:
     reason = (args.get("reason") or "unspecified").strip()
     if session is not None:
         session.human_escalated, session.status = True, "escalated"
+        # Ensure the session row exists (FK parent), then record the escalation.
+        if db_sessions is not None:
+            db_sessions.upsert_session(
+                session.id,
+                status="escalated",
+                channel=session.channel,
+                language=session.language,
+                human_escalated=True,
+                customer_name=session.name,
+                customer_phone=session.phone,
+            )
+        if db_escalations is not None:
+            db_escalations.add_escalation(
+                session_id=session.id,
+                reason=reason,
+                channel=session.channel,
+                language=session.language,
+                customer_name=session.name,
+                customer_phone=session.phone,
+                langfuse_session_id=session.id,
+                langfuse_url=_langfuse_session_url(session.id),
+            )
     log.info("Escalation requested: %s", reason)
     return (
         "I've flagged this for a team member — someone will reach out shortly. "
