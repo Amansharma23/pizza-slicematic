@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from core.models import MenuItem, Menu
+from core.models import Menu, MenuItem
 
 # Default filenames as shipped in menu_data/. Order: base, pizza, topping.
 BASE_FILE = "Types_of_Base.txt"
@@ -43,9 +43,11 @@ def parse_menu_lines(lines: list[str]) -> list[MenuItem]:
         if not item_id or not name or not price_str:
             continue
         # Skip if any column consists only of special characters (no alphanumeric characters)
-        if (not any(c.isalnum() for c in item_id)) or \
-           (not any(c.isalnum() for c in name)) or \
-           (not any(c.isalnum() for c in price_str)):
+        if (
+            (not any(c.isalnum() for c in item_id))
+            or (not any(c.isalnum() for c in name))
+            or (not any(c.isalnum() for c in price_str))
+        ):
             continue
         try:
             price = float(price_str)

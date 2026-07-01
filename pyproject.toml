@@ -5,12 +5,40 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.138.1",
     "gradio>=6.19.0",
-    "sqlalchemy>=2.0.51",
+    "langfuse>=4.12.0",
+    "openai>=2.44.0",
+    "python-dotenv>=1.2.2",
+    "supabase>=2.31.0",
     "uvicorn[standard]>=0.49.0",
 ]
 
 [dependency-groups]
 dev = [
     "playwright>=1.60.0",
+    "pre-commit>=4.6.0",
     "pytest>=9.1.1",
 ]
+
+# --------------------------------------------------------------------------- #
+# Code-quality tooling (run via pre-commit; see .pre-commit-config.yaml)
+# --------------------------------------------------------------------------- #
+[tool.isort]
+profile = "black"          # keep isort and black from fighting
+line_length = 88
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+# Default select (E, F) only — no import/format rules that overlap isort/black.
+extend-exclude = [".venv", "node_modules", "ppt", "scripts"]
+
+[tool.bandit]
+exclude_dirs = [".venv", "node_modules", "ppt", "scripts", "tests"]
+# B104: binding 0.0.0.0 is intentional for Hugging Face Spaces.
+# B110: try/except/pass is a deliberate graceful-degradation pattern in additive
+#       (non-graded) paths — e.g. optional .env load, optional analytics filter.
+skips = ["B104", "B110"]

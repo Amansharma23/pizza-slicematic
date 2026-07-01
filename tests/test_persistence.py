@@ -1,7 +1,7 @@
 """orders_log.txt format tests — parseable, pipe-separated, blank line between."""
 
+from core import persistence, pricing
 from core.models import MenuItem
-from core import pricing, persistence
 
 
 def _bill():
@@ -27,9 +27,9 @@ def test_line_has_all_fields_in_order():
     assert parts[2] == "Rajan"
     assert parts[3] == "9876543210"
     assert parts[4] == "Cheese Burst"
-    assert parts[7] == "677.00"      # unit_price
-    assert parts[8] == "5"           # quantity
-    assert parts[12] == "3594.87"    # total
+    assert parts[7] == "677.00"  # unit_price
+    assert parts[8] == "5"  # quantity
+    assert parts[12] == "3594.87"  # total
     assert parts[13] == "UPI"
 
 
@@ -37,8 +37,12 @@ def test_blank_line_between_orders(tmp_path):
     path = str(tmp_path / "orders_log.txt")
     for _ in range(3):
         persistence.append_order(
-            name="Rajan", phone="9876543210", bill=_bill(), payment_mode="Cash",
-            timestamp="2026-06-27 12:00:00", path=path,
+            name="Rajan",
+            phone="9876543210",
+            bill=_bill(),
+            payment_mode="Cash",
+            timestamp="2026-06-27 12:00:00",
+            path=path,
         )
     content = open(path, encoding="utf-8").read()
     blocks = [b for b in content.split("\n\n") if b.strip()]

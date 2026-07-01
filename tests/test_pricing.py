@@ -1,7 +1,7 @@
 """Pricing engine tests, including the PRD worked-example regression."""
 
-from core.models import MenuItem
 from core import pricing
+from core.models import MenuItem
 
 
 def _items():
@@ -53,7 +53,14 @@ def test_all_money_two_decimals():
     pizza = MenuItem("P1", "Margherita", 299.0)
     topping = MenuItem("T5", "Jalapenos", 39.0)
     bill = pricing.compute_bill(base, pizza, topping, 7)
-    for value in (bill.unit_price, bill.subtotal, bill.discount, bill.taxable, bill.gst, bill.total):
+    for value in (
+        bill.unit_price,
+        bill.subtotal,
+        bill.discount,
+        bill.taxable,
+        bill.gst,
+        bill.total,
+    ):
         assert round(value, 2) == value
 
 

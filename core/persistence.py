@@ -17,7 +17,9 @@ from core.models import Bill
 if os.environ.get("SPACE_ID"):
     LOG_FILE = "/data/orders_log.txt"
 else:
-    LOG_FILE = os.path.join(os.environ.get("DATABASE_DIR", "database"), "orders_log.txt")
+    LOG_FILE = os.path.join(
+        os.environ.get("DATABASE_DIR", "database"), "orders_log.txt"
+    )
 SEP = " | "
 
 FIELD_ORDER = [

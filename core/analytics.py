@@ -1,19 +1,34 @@
 import os
-import pandas as pd
 from datetime import datetime
+
+import pandas as pd
+
 from core.persistence import LOG_FILE
 
 # The fields matching persistence.FIELD_ORDER
 COLUMNS = [
-    "order_id", "timestamp", "name", "phone", "base", "pizza", "topping",
-    "unit_price", "quantity", "subtotal", "discount", "gst", "total", "payment_mode"
+    "order_id",
+    "timestamp",
+    "name",
+    "phone",
+    "base",
+    "pizza",
+    "topping",
+    "unit_price",
+    "quantity",
+    "subtotal",
+    "discount",
+    "gst",
+    "total",
+    "payment_mode",
 ]
+
 
 def load_orders_df() -> pd.DataFrame:
     """Load the local orders log into a pandas DataFrame."""
     if not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0:
         return pd.DataFrame(columns=COLUMNS)
-    
+
     # Read the file line by line to skip blank lines
     lines = []
     with open(LOG_FILE, "r", encoding="utf-8") as f:
@@ -25,7 +40,7 @@ def load_orders_df() -> pd.DataFrame:
                     parts = [""] + parts
                 if len(parts) == len(COLUMNS):
                     lines.append(parts)
-                
+
     df = pd.DataFrame(lines, columns=COLUMNS)
     if df.empty:
         return df
@@ -33,32 +48,43 @@ def load_orders_df() -> pd.DataFrame:
     # Convert numeric columns
     for col in ["unit_price", "subtotal", "discount", "gst", "total"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-    df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0).astype(int)
-    
+    df["quantity"] = (
+        pd.to_numeric(df["quantity"], errors="coerce").fillna(0).astype(int)
+    )
+
     # Parse timestamp
-    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
-    
+    df["timestamp"] = pd.to_datetime(
+        df["timestamp"], format="%Y-%m-%d %H:%M:%S", errors="coerce"
+    )
+
     # Add a 'combo' column for analytics
     df["combo"] = df["base"] + " + " + df["pizza"] + " + " + df["topping"]
-    
+
     return df
 
-def get_analytics(filter_type: str, filter_date: str = None, end_date: str = None) -> dict:
+
+def get_analytics(
+    filter_type: str, filter_date: str = None, end_date: str = None
+) -> dict:
     """
     Returns analytics based on the date filter:
     filter_type: "Date Range", "Specific Date", "This Month", "This Year", "All Time"
     """
     df = load_orders_df()
-    
+
     empty_res = {
-        "total_orders": 0, "total_qty": 0, "revenue": 0.0, "gst": 0.0, "discount": 0.0,
+        "total_orders": 0,
+        "total_qty": 0,
+        "revenue": 0.0,
+        "gst": 0.0,
+        "discount": 0.0,
         "top_bases": pd.DataFrame(columns=["base", "quantity"]),
         "top_pizzas": pd.DataFrame(columns=["pizza", "quantity"]),
         "top_toppings": pd.DataFrame(columns=["topping", "quantity"]),
         "top_combos": pd.DataFrame(columns=["combo", "quantity"]),
-        "orders_df": pd.DataFrame(columns=COLUMNS)
+        "orders_df": pd.DataFrame(columns=COLUMNS),
     }
-    
+
     if df.empty:
         return empty_res
 
@@ -85,10 +111,13 @@ def get_analytics(filter_type: str, filter_date: str = None, end_date: str = Non
         except Exception:
             pass  # fallback to no filter if parsing fails
     elif filter_type == "This Month":
-        df = df[(df["timestamp"].dt.year == now.year) & (df["timestamp"].dt.month == now.month)]
+        df = df[
+            (df["timestamp"].dt.year == now.year)
+            & (df["timestamp"].dt.month == now.month)
+        ]
     elif filter_type == "This Year":
         df = df[df["timestamp"].dt.year == now.year]
-    
+
     if df.empty:
         return empty_res
 
@@ -98,19 +127,39 @@ def get_analytics(filter_type: str, filter_date: str = None, end_date: str = Non
     revenue = float(df["total"].sum())
     gst = float(df["gst"].sum())
     discount = float(df["discount"].sum())
-    
+
     # Top Sellers
-    top_bases = df.groupby("base")["quantity"].sum().reset_index().sort_values(by="quantity", ascending=False)
-    top_pizzas = df.groupby("pizza")["quantity"].sum().reset_index().sort_values(by="quantity", ascending=False)
-    top_toppings = df.groupby("topping")["quantity"].sum().reset_index().sort_values(by="quantity", ascending=False)
-    top_combos = df.groupby("combo")["quantity"].sum().reset_index().sort_values(by="quantity", ascending=False)
-    
+    top_bases = (
+        df.groupby("base")["quantity"]
+        .sum()
+        .reset_index()
+        .sort_values(by="quantity", ascending=False)
+    )
+    top_pizzas = (
+        df.groupby("pizza")["quantity"]
+        .sum()
+        .reset_index()
+        .sort_values(by="quantity", ascending=False)
+    )
+    top_toppings = (
+        df.groupby("topping")["quantity"]
+        .sum()
+        .reset_index()
+        .sort_values(by="quantity", ascending=False)
+    )
+    top_combos = (
+        df.groupby("combo")["quantity"]
+        .sum()
+        .reset_index()
+        .sort_values(by="quantity", ascending=False)
+    )
+
     # Raw orders to display
     # Drop 'combo' and reorder to newest first
     orders_df = df.drop(columns=["combo"]).sort_values(by="timestamp", ascending=False)
     # Format timestamp back to string for clean display
     orders_df["timestamp"] = orders_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     return {
         "total_orders": total_orders,
         "total_qty": total_qty,
@@ -121,5 +170,5 @@ def get_analytics(filter_type: str, filter_date: str = None, end_date: str = Non
         "top_pizzas": top_pizzas,
         "top_toppings": top_toppings,
         "top_combos": top_combos,
-        "orders_df": orders_df
+        "orders_df": orders_df,
     }

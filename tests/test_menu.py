@@ -18,7 +18,7 @@ def test_strips_whitespace_and_blank_lines():
     assert items[0].id == "B1" and items[0].name == "Thin Crust"
 
 
-def test_skips_missing_price_field():            # edge case 8
+def test_skips_missing_price_field():  # edge case 8
     items = menu.parse_menu_lines(["B1;Thin Crust", "B2;Thick Crust;179"])
     assert [i.name for i in items] == ["Thick Crust"]
 
@@ -39,13 +39,15 @@ def test_ignores_duplicate_ids():
 
 
 def test_skips_only_special_characters_columns():
-    items = menu.parse_menu_lines([
-        "***;Thin Crust;149",      # ID has only special characters
-        "B1;@@@;149",             # Name has only special characters
-        "B2;Thick Crust;$$$",      # Price has only special characters
-        "B-3;Thin Crust 🍕;149",   # Valid (columns contain letters/digits along with special characters)
-        "B4;Thick Crust;179.50"    # Valid
-    ])
+    items = menu.parse_menu_lines(
+        [
+            "***;Thin Crust;149",  # ID has only special characters
+            "B1;@@@;149",  # Name has only special characters
+            "B2;Thick Crust;$$$",  # Price has only special characters
+            "B-3;Thin Crust 🍕;149",  # Valid (columns contain letters/digits along with special characters)
+            "B4;Thick Crust;179.50",  # Valid
+        ]
+    )
     assert [i.id for i in items] == ["B-3", "B4"]
     assert [i.name for i in items] == ["Thin Crust 🍕", "Thick Crust"]
     assert items[0].price == 149.0

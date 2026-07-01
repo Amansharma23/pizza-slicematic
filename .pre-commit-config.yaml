@@ -1,0 +1,32 @@
+# Runs on staged files at `git commit` (and via `pre-commit run --all-files`).
+# Order matters: formatters first (isort -> black), then linters (ruff -> bandit).
+# Tool config lives in pyproject.toml ([tool.isort/black/ruff/bandit]).
+exclude: '(^(\.venv|node_modules|ppt|scripts)/|\.(pdf|pptx|xlsx)$)'
+
+repos:
+  # 1. isort — sort imports (black-compatible profile)
+  - repo: https://github.com/PyCQA/isort
+    rev: 6.1.0
+    hooks:
+      - id: isort
+
+  # 2. black — format code
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+
+  # 3. ruff — lint (E/F rules; won't fight black/isort)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  # 4. bandit — security scan
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
