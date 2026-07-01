@@ -1,0 +1,288 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * SliceMatic design tokens
+ *
+ * Palettes are swappable at runtime via <html data-theme="...">.
+ * Components ONLY ever read the semantic vars below (--primary, --card,
+ * etc.) — never a raw hex — so switching palette is a one-attribute change.
+ * See lib/themes.ts for the registry that drives the theme switcher.
+ * ------------------------------------------------------------------ */
+
+/* Default palette = Signature (SliceMatic house palette).
+ * Five brand colors + tints only, no pure white/black. Ink dominates every
+ * surface; sage is the single dominant accent/CTA; sand is a sparing secondary
+ * highlight; plum is rare emphasis; stone is muted text/dividers.
+ * (Contrast checked AA: fg 14.5:1, stone 6.98:1, ink-on-sage 4.95:1 on ink.) */
+:root,
+[data-theme="brand"] {
+  color-scheme: dark;
+
+  --background: #19181a;          /* ink — dominant surface */
+  --backdrop: #100f11;            /* desktop gutters behind the phone frame */
+  --foreground: #ede8e2;          /* warm off-white tint (no pure white) */
+
+  --card: #201f22;               /* raised ink surface */
+  --card-foreground: #ede8e2;
+
+  --surface: #201f22;            /* header, composer, tab bar */
+  --surface-2: #2a282c;          /* chips, inputs */
+
+  --primary: #479761;            /* sage — the one dominant accent / CTA */
+  --primary-foreground: #19181a; /* dark ink text on sage */
+  --secondary: #cebc81;          /* sand — secondary accent / highlight */
+  --secondary-foreground: #19181a;
+  --accent: #cebc81;             /* sand — sparing (pay / highlight) */
+  --accent-foreground: #19181a;
+
+  --muted: #232125;
+  --muted-foreground: #b19f9e;   /* stone — muted text / disabled */
+
+  --border: #38332f;             /* warm divider (stone-tinted ink) */
+  --input: #38332f;
+  --ring: #479761;               /* sage focus ring */
+
+  --success: #479761;            /* sage — positive states */
+  --destructive: #a16e83;        /* plum — emphasis/error (palette has no red) */
+  --destructive-foreground: #19181a;
+
+  /* AI/user chat bubble tints */
+  --bubble-ai: #201f22;
+  --bubble-user: #479761;        /* sage — dominant accent */
+  --bubble-user-foreground: #19181a;
+}
+
+/* Midnight (dark, amber) — alternate */
+[data-theme="midnight"] {
+  color-scheme: dark;
+
+  --background: #0c0a09;
+  --backdrop: #050403;
+  --foreground: #fafaf9;
+
+  --card: #1c1917;
+  --card-foreground: #fafaf9;
+
+  --surface: #211d1b;
+  --surface-2: #292524;
+
+  --primary: #f59e0b;
+  --primary-foreground: #1c1917;
+  --secondary: #f97316;
+  --secondary-foreground: #ffffff;
+  --accent: #f97316;
+  --accent-foreground: #ffffff;
+
+  --muted: #292524;
+  --muted-foreground: #a8a29e;
+
+  --border: #322c29;
+  --input: #322c29;
+  --ring: #f59e0b;
+
+  --success: #22c55e;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  --bubble-ai: #1c1917;
+  --bubble-user: #f59e0b;
+  --bubble-user-foreground: #1c1917;
+}
+
+/* Classic Orange + Blue (light) */
+[data-theme="classic"] {
+  color-scheme: light;
+
+  --background: #fff7ed;
+  --backdrop: #f0e2d1;
+  --foreground: #0f172a;
+
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+
+  --surface: #ffffff;
+  --surface-2: #fdf4f0;
+
+  --primary: #ea580c;
+  --primary-foreground: #ffffff;
+  --secondary: #f97316;
+  --secondary-foreground: #ffffff;
+  --accent: #2563eb;
+  --accent-foreground: #ffffff;
+
+  --muted: #fdf4f0;
+  --muted-foreground: #64748b;
+
+  --border: #fceae1;
+  --input: #fceae1;
+  --ring: #ea580c;
+
+  --success: #16a34a;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --bubble-ai: #ffffff;
+  --bubble-user: #ea580c;
+  --bubble-user-foreground: #ffffff;
+}
+
+/* Fresh Basil (light, tomato + green) */
+[data-theme="basil"] {
+  color-scheme: light;
+
+  --background: #fffbeb;
+  --backdrop: #efe6d2;
+  --foreground: #1c1917;
+
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+
+  --surface: #ffffff;
+  --surface-2: #f7f1e3;
+
+  --primary: #dc2626;
+  --primary-foreground: #ffffff;
+  --secondary: #ef4444;
+  --secondary-foreground: #ffffff;
+  --accent: #16a34a;
+  --accent-foreground: #ffffff;
+
+  --muted: #f3ecdd;
+  --muted-foreground: #6b7280;
+
+  --border: #ece0cb;
+  --input: #ece0cb;
+  --ring: #dc2626;
+
+  --success: #16a34a;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+
+  --bubble-ai: #ffffff;
+  --bubble-user: #dc2626;
+  --bubble-user-foreground: #ffffff;
+}
+
+/* Map semantic vars into Tailwind's color system so utilities like
+   bg-primary, text-muted-foreground, border-border all resolve. */
+@theme inline {
+  --color-background: var(--background);
+  --color-backdrop: var(--backdrop);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-bubble-ai: var(--bubble-ai);
+  --color-bubble-user: var(--bubble-user);
+  --color-bubble-user-foreground: var(--bubble-user-foreground);
+
+  --font-heading: var(--font-playfair);
+  --font-sans: var(--font-karla);
+
+  --radius-sm: 0.5rem;
+  --radius: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Respect reduced-motion globally (skill pre-delivery checklist). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Thin, themed scrollbars for the chat/menu scroll areas. */
+.slick-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.slick-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+.slick-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-bubble-in {
+  animation: bubble-in 0.22s ease-out both;
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

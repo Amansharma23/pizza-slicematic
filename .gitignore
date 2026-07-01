@@ -16,6 +16,10 @@ database/menu_uploads/
 
 # Node
 node_modules/
+frontend/.next/
+
+# Installed dev-time skills (regenerable via `uipro init --ai claude`) — not project code
+.claude/skills/
 
 # OS/editor junk
 .DS_Store

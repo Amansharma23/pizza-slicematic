@@ -18,6 +18,7 @@ from core import menu as menu_mod
 from core import persistence, pricing
 from core import validation as v
 from core.menu import MenuError
+from core.models import MenuItem
 
 # Additive Supabase mirror — optional. The graded path must work without it.
 try:
@@ -119,6 +120,64 @@ def _resolve(req):
     return pricing.compute_bill(base, pizza, topping, qty), None
 
 
+def _combined_topping(toppings: list[MenuItem]) -> MenuItem:
+    """Fuse 1..3 resolved toppings into one MenuItem for core.compute_bill.
+
+    Summing the toppings' menu prices is data aggregation of menu-provided
+    values — the bill formula (subtotal/discount/GST/total) still lives solely
+    in core.pricing. The combined name lands in the single `topping` log field.
+    """
+    return MenuItem(
+        id="+".join(t.id for t in toppings),
+        name=" + ".join(t.name for t in toppings),
+        price=round(sum(t.price for t in toppings), 2),
+    )
+
+
+def _resolve_cart_line(m, line: CartLineReq):
+    """Validate + resolve one multi-topping line. Returns (bill, toppings, err)."""
+    ok_q, qty = v.validate_quantity(line.quantity)
+    if not ok_q:
+        return None, None, {"quantity": qty}
+    base = _find(m.bases, line.base_id)
+    pizza = _find(m.pizzas, line.pizza_id)
+    missing = [n for n, val in (("base", base), ("pizza", pizza)) if val is None]
+    if missing:
+        return None, None, {"selection": f"Please choose a {', '.join(missing)}."}
+    ids = [t for t in (line.topping_ids or []) if t]
+    if not ids:
+        return None, None, {"toppings": "Pick at least one topping."}
+    if len(ids) > MAX_TOPPINGS:
+        return None, None, {"toppings": f"Choose up to {MAX_TOPPINGS} toppings."}
+    toppings = [_find(m.toppings, tid) for tid in ids]
+    if any(t is None for t in toppings):
+        return None, None, {"toppings": "One or more toppings are not on the menu."}
+    return (
+        pricing.compute_bill(base, pizza, _combined_topping(toppings), qty),
+        toppings,
+        None,
+    )
+
+
+def _cart_line_dict(bill, toppings: list[MenuItem]) -> dict:
+    return {
+        "base": {"id": bill.base.id, "name": bill.base.name, "price": bill.base.price},
+        "pizza": {
+            "id": bill.pizza.id,
+            "name": bill.pizza.name,
+            "price": bill.pizza.price,
+        },
+        "toppings": [{"id": t.id, "name": t.name, "price": t.price} for t in toppings],
+        "quantity": bill.quantity,
+        "unit_price": bill.unit_price,
+        "subtotal": bill.subtotal,
+        "discount": bill.discount,
+        "taxable": bill.taxable,
+        "gst": bill.gst,
+        "total": bill.total,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Models
 # --------------------------------------------------------------------------- #
@@ -138,6 +197,27 @@ class SummaryReq(BaseModel):
 
 class OrderReq(CustomerReq, SummaryReq):
     payment_mode: str = ""
+
+
+MAX_TOPPINGS = 3
+
+
+class CartLineReq(BaseModel):
+    base_id: str = ""
+    pizza_id: str = ""
+    topping_ids: list[str] = []
+    quantity: str | int = ""
+
+
+class CartReq(BaseModel):
+    lines: list[CartLineReq] = []
+
+
+class CheckoutReq(BaseModel):
+    name: str = ""
+    phone: str = ""
+    payment_mode: str = ""
+    lines: list[CartLineReq] = []
 
 
 class ConfigReq(BaseModel):
@@ -230,6 +310,105 @@ def place_order(req: OrderReq):
         "payment_mode": mode,
         "name": name,
         "bill": _bill_dict(bill),
+    }
+
+
+@router.post("/cart/price")
+def price_cart(req: CartReq):
+    """Price a multi-line, multi-topping cart. Additive — core is untouched.
+
+    Each line: base + pizza + 1..3 toppings × quantity, priced by
+    core.compute_bill via a combined topping. Cart totals are the wrapper-level
+    sum of the per-line core results (no money computed client-side)."""
+    try:
+        m = _load_active_menu()
+    except MenuError as exc:
+        return {"ok": False, "errors": {"menu": str(exc)}}
+    if not req.lines:
+        return {"ok": False, "errors": {"lines": "Your order is empty."}}
+
+    out_lines = []
+    totals = {
+        "subtotal": 0.0,
+        "discount": 0.0,
+        "taxable": 0.0,
+        "gst": 0.0,
+        "total": 0.0,
+    }
+    for idx, line in enumerate(req.lines):
+        bill, toppings, err = _resolve_cart_line(m, line)
+        if err:
+            return {"ok": False, "line_index": idx, "errors": err}
+        out_lines.append(_cart_line_dict(bill, toppings))
+        for k in totals:
+            totals[k] = round(totals[k] + getattr(bill, k), 2)
+
+    return {"ok": True, "lines": out_lines, "cart": totals}
+
+
+@router.post("/cart/checkout")
+def checkout_cart(req: CheckoutReq):
+    """Place a multi-line, multi-topping cart. Additive — core owns money + the log.
+
+    Re-validates everything server-side and resolves every line BEFORE writing, so
+    a bad field never leaves a partial order. Writes one orders_log block per line
+    (same core.persistence.append_order as every other surface) + best-effort DB
+    mirror. Returns the generated order numbers."""
+    try:
+        m = _load_active_menu()
+    except MenuError as exc:
+        return {"ok": False, "errors": {"menu": str(exc)}}
+
+    ok_n, name = v.validate_name(req.name)
+    ok_p, phone = v.validate_phone(req.phone)
+    ok_pay, mode = v.validate_payment(req.payment_mode)
+    errors: dict[str, str] = {}
+    if not ok_n:
+        errors["name"] = name
+    if not ok_p:
+        errors["phone"] = phone
+    if not ok_pay:
+        errors["payment_mode"] = mode
+    if not req.lines:
+        errors["lines"] = "Your order is empty."
+
+    # Resolve every line up front — never write a partial order.
+    resolved = []
+    for idx, line in enumerate(req.lines):
+        bill, _toppings, err = _resolve_cart_line(m, line)
+        if err:
+            return {"ok": False, "line_index": idx, "errors": err}
+        resolved.append(bill)
+
+    if errors:
+        return {"ok": False, "errors": errors}
+
+    order_nos, timestamp, total = [], None, 0.0
+    for bill in resolved:
+        timestamp, order_no = persistence.append_order(
+            name=name, phone=phone, bill=bill, payment_mode=mode
+        )
+        order_nos.append(order_no)
+        total = round(total + bill.total, 2)
+        if db_orders:  # best-effort mirror; never affects the .txt log
+            db_orders.mirror_order(
+                name=name,
+                phone=phone,
+                bill=bill,
+                payment_mode=mode,
+                order_no=order_no,
+                timestamp=timestamp,
+                source="checkout",
+            )
+
+    return {
+        "ok": True,
+        "order_nos": order_nos,
+        "timestamp": timestamp,
+        "total": total,
+        "name": name,
+        "payment_mode": mode,
+        "line_count": len(order_nos),
     }
 
 
