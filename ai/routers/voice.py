@@ -28,6 +28,18 @@ router = APIRouter()
 VOICE_CAP_SECONDS = 180  # 3-minute call cap
 
 
+@router.post("/voice/start")
+def voice_start(session_id: str = Form(...)) -> dict:
+    """Begin a new voice call: reset the per-call 3-minute budget.
+
+    The cap timer (``voice_started_at``) is otherwise set on the first transcribe
+    and never cleared, so a reused session would carry an expired budget into the
+    next call. Resetting here gives each call a fresh 3 minutes."""
+    session = sess.get_or_create(session_id, channel="voice")
+    session.voice_started_at = None
+    return {"session_id": session_id, "ok": True}
+
+
 @router.post("/voice/transcribe")
 def transcribe(session_id: str = Form(...), audio: UploadFile = File(...)) -> dict:
     session = sess.get_or_create(session_id, channel="voice")
@@ -39,9 +51,16 @@ def transcribe(session_id: str = Form(...), audio: UploadFile = File(...)) -> di
         return {"session_id": session_id, "transcript": "", "call_ended": True}
 
     data = audio.file.read()
+    # Browsers send "audio/webm;codecs=opus"; Deepgram wants the bare container.
+    content_type = (audio.content_type or "audio/webm").split(";")[0].strip()
     try:
-        transcript, confidence = deepgram.transcribe(
-            data, audio.content_type or "audio/webm"
+        transcript, confidence = deepgram.transcribe(data, content_type)
+        log.info(
+            "STT: %d bytes ct=%s -> %d chars (conf %.3f)",
+            len(data),
+            content_type,
+            len(transcript),
+            confidence,
         )
     except Exception as exc:
         log.warning("STT failed: %s", exc)

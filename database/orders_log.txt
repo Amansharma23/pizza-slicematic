@@ -168,3 +168,5 @@ SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ |
 SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Sweet Corn | 667.00 | 2 | 1334.00 | 0.00 | 240.12 | 1574.12 | Card
 
 SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Roasted Garlic | 677.00 | 2 | 1354.00 | 0.00 | 243.72 | 1597.72 | Card
+
+SM-000078 | 2026-07-02 01:50:17 | Mauli | 8790312333 | Multigrain | Margherita | Roasted Garlic | 517.00 | 1 | 517.00 | 0.00 | 93.06 | 610.06 | Cash
