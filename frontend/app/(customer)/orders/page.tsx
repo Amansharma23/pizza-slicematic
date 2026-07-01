@@ -10,28 +10,35 @@ import {
   Receipt,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  ORDER_STEPS,
-  orderStatus,
-  type PlacedOrder,
-  useOrdersStore,
-} from "@/lib/orders-store";
+import type { UserOrder } from "@/lib/api";
+import { ORDER_STEPS, orderStatus, useOrdersStore } from "@/lib/orders-store";
+import { CURRENT_USER } from "@/lib/user";
 import { cn, formatINR } from "@/lib/utils";
 
 const STEP_ICONS = [Check, ChefHat, Bike, PackageCheck];
 
 export default function OrdersPage() {
-  const { orders, init } = useOrdersStore();
+  return (
+    <Suspense fallback={null}>
+      <OrdersContent />
+    </Suspense>
+  );
+}
+
+function OrdersContent() {
+  const { orders, loading, error, load } = useOrdersStore();
+  const placed = useSearchParams().get("placed");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    init();
-  }, [init]);
+    void load(CURRENT_USER.id);
+  }, [load]);
 
   // Tick so the simulated status advances live while the tab is open.
   useEffect(() => {
@@ -39,7 +46,20 @@ export default function OrdersPage() {
     return () => clearInterval(t);
   }, []);
 
-  const justPlaced = orders[0] && now - orders[0].placedAt < 12000;
+  if (loading && orders.length === 0) {
+    return (
+      <div className="slick-scroll h-full overflow-y-auto">
+        <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-5">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-40 animate-pulse rounded-xl border border-border bg-surface-2"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (orders.length === 0) {
     return (
@@ -50,7 +70,7 @@ export default function OrdersPage() {
         <div className="space-y-1">
           <h2 className="font-heading text-xl font-semibold">No orders yet</h2>
           <p className="max-w-xs text-sm text-muted-foreground">
-            Your placed orders and live tracking show up here.
+            {error ?? "Your placed orders and live tracking show up here."}
           </p>
         </div>
         <Button asChild>
@@ -63,7 +83,7 @@ export default function OrdersPage() {
   return (
     <div className="slick-scroll h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl space-y-4 px-4 py-5">
-        {justPlaced && (
+        {placed && orders.some((o) => o.order_no === placed) && (
           <div className="flex items-center gap-3 rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-success">
             <PartyPopper className="size-5 shrink-0" />
             <p className="text-sm font-medium">
@@ -75,30 +95,49 @@ export default function OrdersPage() {
         <h1 className="font-heading text-xl font-bold">Your orders</h1>
 
         {orders.map((order) => (
-          <OrderCard key={order.id} order={order} now={now} />
+          <OrderCard
+            key={order.order_no}
+            order={order}
+            now={now}
+            highlight={order.order_no === placed}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function OrderCard({ order, now }: { order: PlacedOrder; now: number }) {
-  const { index, step } = orderStatus(order.placedAt, now);
-  const placedTime = new Date(order.placedAt).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function OrderCard({
+  order,
+  now,
+  highlight,
+}: {
+  order: UserOrder;
+  now: number;
+  highlight?: boolean;
+}) {
+  const placedMs = Date.parse(order.created_at);
+  const { index, step } = orderStatus(placedMs, now);
+  const placedTime = Number.isNaN(placedMs)
+    ? ""
+    : new Date(placedMs).toLocaleString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "short",
+      });
+  const items = order.items ?? [];
 
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className={cn("overflow-hidden p-0", highlight && "border-primary/60")}>
       <div className="flex items-start justify-between gap-3 border-b border-border p-4">
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-medium">
             <Receipt className="size-4 text-muted-foreground" />
-            {order.orderNos.join(", ")}
+            {order.order_no}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Placed {placedTime} · {order.paymentLabel}
+            {placedTime} · {order.payment_mode}
           </p>
         </div>
         <Badge variant={index === 3 ? "success" : "primary"}>{step}</Badge>
@@ -146,11 +185,14 @@ function OrderCard({ order, now }: { order: PlacedOrder; now: number }) {
 
       {/* Items + total */}
       <div className="space-y-1 border-t border-border p-4">
-        {order.items.map((item, i) => (
+        {items.map((item, i) => (
           <div key={i} className="flex justify-between gap-3 text-sm">
             <span className="min-w-0 truncate text-muted-foreground">
               {item.quantity}× {item.pizza}
               <span className="text-xs"> · {item.base}</span>
+            </span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {formatINR(item.line_total)}
             </span>
           </div>
         ))}

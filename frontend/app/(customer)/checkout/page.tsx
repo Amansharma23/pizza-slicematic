@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { checkoutCart } from "@/lib/api";
 import { toPayload, useMenuStore } from "@/lib/menu-store";
-import { useOrdersStore } from "@/lib/orders-store";
 import { CURRENT_USER } from "@/lib/user";
 import { cn, formatINR } from "@/lib/utils";
 
@@ -51,7 +50,6 @@ const METHODS = [
 export default function CheckoutPage() {
   const router = useRouter();
   const { cart, totals, reprice, clearCart } = useMenuStore();
-  const addOrder = useOrdersStore((s) => s.addOrder);
 
   const [name, setName] = useState(CURRENT_USER.name);
   const [phone, setPhone] = useState(CURRENT_USER.phone);
@@ -91,32 +89,21 @@ export default function CheckoutPage() {
 
     try {
       const res = await checkoutCart({
+        user_id: CURRENT_USER.id,
         name: name.trim(),
         phone: phone.trim(),
         payment_mode: method.mode,
         lines: cart.map(toPayload),
       });
-      if (!res.ok || !res.order_nos) {
+      if (!res.ok || !res.order_no) {
         const first = res.errors ? Object.values(res.errors)[0] : null;
         setError(first ?? "Couldn't place your order. Please try again.");
         setProcessing(false);
         return;
       }
-      addOrder({
-        orderNos: res.order_nos,
-        items: cart.map((l) => ({
-          pizza: l.pizza.name,
-          base: l.base.name,
-          toppings: l.toppings.map((t) => t.name),
-          quantity: l.quantity,
-        })),
-        total: res.total ?? totals?.total ?? 0,
-        paymentMode: res.payment_mode ?? "Cash",
-        paymentLabel: method.label,
-        address: address.line,
-      });
       clearCart();
-      router.push("/orders");
+      // Order is now in the DB (source of truth); the Orders tab loads it.
+      router.push(`/orders?placed=${encodeURIComponent(res.order_no)}`);
     } catch {
       setError("Can't reach SliceMatic right now. Please try again.");
       setProcessing(false);

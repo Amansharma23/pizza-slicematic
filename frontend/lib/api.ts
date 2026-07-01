@@ -143,6 +143,7 @@ export function priceCart(
 // line (core.persistence). payment_mode: "1"/"Cash" (COD & Cash) or "3"/"UPI".
 
 export interface CheckoutPayload {
+  user_id: string;
   name: string;
   phone: string;
   payment_mode: string;
@@ -151,8 +152,7 @@ export interface CheckoutPayload {
 
 export interface CheckoutResponse {
   ok: boolean;
-  order_nos?: string[];
-  timestamp?: string;
+  order_no?: string;
   total?: number;
   name?: string;
   payment_mode?: string;
@@ -165,6 +165,43 @@ export function checkoutCart(
   payload: CheckoutPayload
 ): Promise<CheckoutResponse> {
   return postJSON<CheckoutResponse>("/api/cart/checkout", payload);
+}
+
+/* ------------------------- Orders (DB) ---------------------- */
+// API orders live in Supabase (source of truth). Listed by user_id.
+
+export interface OrderItem {
+  pizza: string;
+  base: string;
+  toppings: string[];
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface UserOrder {
+  order_no: string;
+  items: OrderItem[] | null;
+  subtotal: number;
+  discount: number;
+  gst: number;
+  total: number;
+  payment_mode: string;
+  status: string;
+  created_at: string;
+  customer_name: string;
+}
+
+export interface OrdersResponse {
+  ok: boolean;
+  orders?: UserOrder[];
+  errors?: Record<string, string>;
+}
+
+export function getUserOrders(userId: string): Promise<OrdersResponse> {
+  return getJSON<OrdersResponse>(
+    `/api/orders?user_id=${encodeURIComponent(userId)}`
+  );
 }
 
 /* --------------------------- Voice -------------------------- */

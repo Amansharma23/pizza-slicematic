@@ -12,6 +12,9 @@ export interface SavedAddress {
 }
 
 export interface UserProfile {
+  /** Stable user id — the key orders are stored/listed under (DB `user_id`).
+   *  Hardcoded now; real auth will supply this later. */
+  id: string;
   name: string;
   phone: string;
   email: string;
@@ -22,6 +25,7 @@ export interface UserProfile {
 }
 
 export const CURRENT_USER: UserProfile = {
+  id: "11111111-1111-1111-1111-111111111111",
   name: "Aarav Sharma",
   phone: "9876543210",
   email: "aarav.sharma@example.com",
