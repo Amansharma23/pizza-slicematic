@@ -140,3 +140,31 @@ SM-000069 | 2026-07-01 22:22:13 | Aarav Sharma | 9876543210 | Multigrain4 | Pepp
 SM-000070 | 2026-07-01 22:29:55 | Aarav Sharma | 9876543210 | Multigrain2 | Chicago Deep Dish | Sweet Corn | 557.00 | 1 | 557.00 | 0.00 | 100.26 | 657.26 | Cash
 
 SM-000071 | 2026-07-01 22:58:24 | Aarav Sharma | 9876543210 | Multigrain4 | Margherita | Green Peppers + Sun-Dried Tomatoes | 566.00 | 1 | 566.00 | 0.00 | 101.88 | 667.88 | Cash
+
+SM-000072 | 2026-07-01 23:38:15 | Aarav Sharma | 9876543210 | Thin Crust | Margherita | Black Olives + Extra Cheese + Green Peppers | 605.00 | 4 | 2420.00 | 0.00 | 435.60 | 2855.60 | Cash
+
+SM-000073 | 2026-07-01 23:38:17 | Aarav Sharma | 9876543210 | Cheese Burst | Mouli BBQ | Black Olives + Sun-Dried Tomatoes | 796.00 | 3 | 2388.00 | 0.00 | 429.84 | 2817.84 | Cash
+
+SM-000074 | 2026-07-01 23:40:08 | Mouli | 9886756678 | Thick Crust | Greek Mediterranean | Peri-Peri Drizzle | 567.00 | 1 | 567.00 | 0.00 | 102.06 | 669.06 | Cash
+
+SM-000075 | 2026-07-01 23:41:18 | Mouli | 9886756678 | Multigrain | Margherita | Black Olives | 517.00 | 1 | 517.00 | 0.00 | 93.06 | 610.06 | Cash
+
+SM-000076 | 2026-07-02 00:44:25 | Aarav Sharma | 9876543210 | Thin Crust | Margherita | Button Mushrooms + Green Peppers | 536.00 | 2 | 1072.00 | 0.00 | 192.96 | 1264.96 | UPI
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Extra Cheese | 697.00 | 2 | 1394.00 | 0.00 | 250.92 | 1644.92 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Black Olives | 677.00 | 2 | 1354.00 | 0.00 | 243.72 | 1597.72 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Button Mushrooms | 677.00 | 2 | 1354.00 | 0.00 | 243.72 | 1597.72 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Green Peppers | 667.00 | 2 | 1334.00 | 0.00 | 240.12 | 1574.12 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Jalapenos | 667.00 | 2 | 1334.00 | 0.00 | 240.12 | 1574.12 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Sun-Dried Tomatoes | 687.00 | 2 | 1374.00 | 0.00 | 247.32 | 1621.32 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Caramelised Onions | 677.00 | 2 | 1354.00 | 0.00 | 243.72 | 1597.72 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Sweet Corn | 667.00 | 2 | 1334.00 | 0.00 | 240.12 | 1574.12 | Card
+
+SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Roasted Garlic | 677.00 | 2 | 1354.00 | 0.00 | 243.72 | 1597.72 | Card

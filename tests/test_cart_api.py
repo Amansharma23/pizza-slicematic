@@ -188,23 +188,22 @@ def test_unknown_topping_rejected(client):
 
 
 # --------------------------------------------------------------------------- #
-# Checkout — placing the cart. append_order is stubbed so tests never write the
-# real orders_log or touch a DB (per the "tests run without keys/DB" rule).
+# Checkout — API orders write to the DB ONLY (not orders_log.txt). db_orders is
+# stubbed so tests run without Supabase/keys and never write anything real.
 # --------------------------------------------------------------------------- #
 
 
 @pytest.fixture
-def no_write(monkeypatch):
+def fake_db(monkeypatch):
+    """Stub db_orders.create_order; capture calls, return a DB-style order_no."""
     calls = []
-    counter = {"n": 0}
 
-    def fake_append(**kw):
-        counter["n"] += 1
-        calls.append(kw)
-        return ("2026-07-01 00:00:00", f"SM-{counter['n']:06d}")
+    class _DB:
+        def create_order(self, **kw):
+            calls.append(kw)
+            return "SM-20260702-0001"
 
-    monkeypatch.setattr(routes.persistence, "append_order", fake_append)
-    monkeypatch.setattr(routes, "db_orders", None)
+    monkeypatch.setattr(routes, "db_orders", _DB())
     return calls
 
 
@@ -225,9 +224,10 @@ def _good_lines(m):
     ]
 
 
-def test_checkout_places_every_line(client, no_write):
+def test_checkout_creates_one_order_with_all_items(client, fake_db):
     c, m = client
     payload = {
+        "user_id": "11111111-1111-1111-1111-111111111111",
         "name": "Aarav Sharma",
         "phone": "9876543210",
         "payment_mode": "UPI",
@@ -235,13 +235,16 @@ def test_checkout_places_every_line(client, no_write):
     }
     res = c.post("/api/cart/checkout", json=payload).json()
     assert res["ok"] is True
+    assert res["order_no"] == "SM-20260702-0001"
     assert res["line_count"] == 2
-    assert len(res["order_nos"]) == 2
     assert res["payment_mode"] == "UPI"
-    assert len(no_write) == 2  # one append per line
+    # One DB row per cart, holding both items and the user_id.
+    assert len(fake_db) == 1
+    assert len(fake_db[0]["items"]) == 2
+    assert fake_db[0]["user_id"] == "11111111-1111-1111-1111-111111111111"
 
 
-def test_checkout_cash_mode_number_resolves_to_cash(client, no_write):
+def test_checkout_cash_mode_number_resolves_to_cash(client, fake_db):
     c, m = client
     payload = {
         "name": "Aarav Sharma",
@@ -252,9 +255,10 @@ def test_checkout_cash_mode_number_resolves_to_cash(client, no_write):
     res = c.post("/api/cart/checkout", json=payload).json()
     assert res["ok"] is True
     assert res["payment_mode"] == "Cash"
+    assert fake_db[0]["payment_mode"] == "Cash"
 
 
-def test_checkout_bad_phone_writes_nothing(client, no_write):
+def test_checkout_bad_phone_writes_nothing(client, fake_db):
     c, m = client
     payload = {
         "name": "Aarav Sharma",
@@ -265,10 +269,10 @@ def test_checkout_bad_phone_writes_nothing(client, no_write):
     res = c.post("/api/cart/checkout", json=payload).json()
     assert res["ok"] is False
     assert "phone" in res["errors"]
-    assert no_write == []  # nothing written on validation failure
+    assert fake_db == []  # nothing written on validation failure
 
 
-def test_checkout_bad_payment_rejected(client, no_write):
+def test_checkout_bad_payment_rejected(client, fake_db):
     c, m = client
     payload = {
         "name": "Aarav Sharma",
@@ -279,10 +283,10 @@ def test_checkout_bad_payment_rejected(client, no_write):
     res = c.post("/api/cart/checkout", json=payload).json()
     assert res["ok"] is False
     assert "payment_mode" in res["errors"]
-    assert no_write == []
+    assert fake_db == []
 
 
-def test_checkout_bad_line_writes_nothing(client, no_write):
+def test_checkout_bad_line_writes_nothing(client, fake_db):
     c, m = client
     payload = {
         "name": "Aarav Sharma",
@@ -300,4 +304,38 @@ def test_checkout_bad_line_writes_nothing(client, no_write):
     res = c.post("/api/cart/checkout", json=payload).json()
     assert res["ok"] is False
     assert res["line_index"] == 0
-    assert no_write == []
+    assert fake_db == []
+
+
+def test_checkout_db_unavailable_surfaces_error(client, monkeypatch):
+    c, m = client
+    monkeypatch.setattr(routes, "db_orders", None)  # DB not configured
+    payload = {
+        "name": "Aarav Sharma",
+        "phone": "9876543210",
+        "payment_mode": "UPI",
+        "lines": _good_lines(m)[:1],
+    }
+    res = c.post("/api/cart/checkout", json=payload).json()
+    assert res["ok"] is False
+    assert "db" in res["errors"]
+
+
+def test_list_orders_requires_user_id(client):
+    c, _ = client
+    res = c.get("/api/orders").json()
+    assert res["ok"] is False
+    assert "user_id" in res["errors"]
+
+
+def test_list_orders_returns_user_rows(client, monkeypatch):
+    c, _ = client
+
+    class _DB:
+        def list_orders_by_user(self, user_id, limit=50):
+            return [{"order_no": "SM-20260702-0001", "user_id": user_id}]
+
+    monkeypatch.setattr(routes, "db_orders", _DB())
+    res = c.get("/api/orders", params={"user_id": "u-1"}).json()
+    assert res["ok"] is True
+    assert res["orders"][0]["order_no"] == "SM-20260702-0001"
