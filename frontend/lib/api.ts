@@ -214,6 +214,17 @@ export interface TranscribeResponse {
   error?: string;
 }
 
+/** Start a voice call — resets the per-call 3-minute budget on the server. */
+export async function startVoiceCall(sessionId: string): Promise<void> {
+  const form = new FormData();
+  form.append("session_id", sessionId);
+  try {
+    await fetch(`${API_BASE}/voice/start`, { method: "POST", body: form });
+  } catch {
+    /* best-effort — the call can still proceed */
+  }
+}
+
 export async function transcribeVoice(
   audio: Blob,
   sessionId: string

@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import { sendChat } from "@/lib/api";
+import { sendChat, voiceRespond } from "@/lib/api";
 
 const SESSION_KEY = "slicematic-session-id";
 
@@ -23,7 +23,12 @@ interface ChatState {
   error: string | null;
   /** Hydrate the persisted session id from localStorage (call once on mount). */
   init: () => void;
+  /** Return the session id, creating + persisting one if absent (voice needs it upfront). */
+  ensureSessionId: () => string;
   send: (text: string) => Promise<void>;
+  /** Voice turn: add the transcript as a user message, run the agent via the
+   *  voice channel, add the reply. Returns the reply text (for TTS) or null. */
+  sendVoice: (transcript: string) => Promise<string | null>;
   reset: () => void;
 }
 
@@ -51,6 +56,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (get().sessionId) return;
     const saved = window.localStorage.getItem(SESSION_KEY);
     if (saved) set({ sessionId: saved });
+  },
+
+  ensureSessionId: () => {
+    let id = get().sessionId;
+    if (!id) {
+      id = newId();
+      window.localStorage.setItem(SESSION_KEY, id);
+      set({ sessionId: id });
+    }
+    return id;
   },
 
   send: async (text: string) => {
@@ -96,6 +111,53 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // Drop the pending bubble; keep the user's message so they can retry.
         messages: s.messages.filter((m) => m.id !== pendingId),
       }));
+    }
+  },
+
+  sendVoice: async (transcript: string) => {
+    const trimmed = transcript.trim();
+    if (!trimmed || get().isSending) return null;
+
+    const userMsg: ChatMessage = { id: newId(), role: "user", content: trimmed };
+    const pendingId = newId();
+    set((s) => ({
+      messages: [
+        ...s.messages,
+        userMsg,
+        { id: pendingId, role: "assistant", content: "", pending: true },
+      ],
+      isSending: true,
+      error: null,
+    }));
+
+    try {
+      const res = await voiceRespond(trimmed, get().sessionId);
+      window.localStorage.setItem(SESSION_KEY, res.session_id);
+      set((s) => ({
+        sessionId: res.session_id,
+        escalated: res.escalated,
+        messages: s.messages.map((m) =>
+          m.id === pendingId
+            ? {
+                id: pendingId,
+                role: "assistant",
+                content: res.reply,
+                blocked: res.blocked,
+              }
+            : m
+        ),
+        isSending: false,
+      }));
+      return res.reply;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Something went wrong.";
+      set((s) => ({
+        isSending: false,
+        error: message,
+        messages: s.messages.filter((m) => m.id !== pendingId),
+      }));
+      return null;
     }
   },
 
