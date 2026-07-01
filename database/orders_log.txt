@@ -118,3 +118,9 @@ SM-000058 | 2026-06-29 17:57:13 | Amit Jackson | 8377306334 | Thin Crust | Chica
 SM-000059 | 2026-06-29 20:53:46 | Joshua Harris | 6368045829 | Thin Crust | Chicago Deep Dish | Button Mushrooms | 547.00 | 4 | 2188.00 | 0.00 | 393.84 | 2581.84 | Cash
 
 SM-000060 | 2026-06-29 23:10:14 | Joseph Clark | 9494148662 | Multigrain | Farm House | Black Olives | 537.00 | 3 | 1611.00 | 0.00 | 289.98 | 1900.98 | Card
+
+SM-000061 | 2026-06-30 18:25:01 | Aman Sharma | 9811122233 | Thin Crust | Margherita | Black Olives | 497.00 | 2 | 994.00 | 0.00 | 178.92 | 1172.92 | UPI
+
+SM-000062 | 2026-06-30 18:25:48 | Aman Sharma | 9811122233 | Thin Crust | Margherita | Black Olives | 497.00 | 2 | 994.00 | 0.00 | 178.92 | 1172.92 | UPI
+
+SM-000063 | 2026-07-01 16:42:46 | mouli | 8790534222 | Thin Crust | Margherita | Black Olives | 497.00 | 5 | 2485.00 | 248.50 | 402.57 | 2639.07 | UPI
