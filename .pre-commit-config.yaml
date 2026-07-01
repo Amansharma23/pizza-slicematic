@@ -1,7 +1,8 @@
 # Runs on staged files at `git commit` (and via `pre-commit run --all-files`).
 # Order matters: formatters first (isort -> black), then linters (ruff -> bandit).
 # Tool config lives in pyproject.toml ([tool.isort/black/ruff/bandit]).
-exclude: '(^(\.venv|node_modules|ppt|scripts)/|\.(pdf|pptx|xlsx)$)'
+# .claude/ holds installed third-party skills (their own scripts) — not our code.
+exclude: '(^(\.venv|node_modules|ppt|scripts|\.claude|frontend)/|\.(pdf|pptx|xlsx)$)'
 
 repos:
   # 1. isort — sort imports (black-compatible profile)

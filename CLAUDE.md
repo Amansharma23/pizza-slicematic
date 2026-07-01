@@ -47,9 +47,10 @@ Detailed checklist + decisions: `docs/STAGE3_PLAN.md`. API reference: `docs/API.
 - Dev tooling: pre-commit (isort/black/ruff/bandit), Claude PostToolUse hook, CI `lint` job.
 - `postman/SliceMatic.postman_collection.json`, `docs/API.md`. **103 tests pass.**
 
-**Run it:**
-- AI service: `uv run uvicorn ai.main:app --reload --port 7860` (docs at `/docs`)
-- Graded Gradio app (separate): `uv run python app.py`
+**Run it** (full step-by-step for any human/LLM is in **`LOCAL_SETUP.md`** — 3 servers):
+- AI service (chat/voice + `/api/*`): `uv run uvicorn ai.main:app --port 7861` (docs at `/docs`)
+- Graded Gradio app (separate): `uv run python app.py` (port 7860)
+- Frontend: `cd frontend && npm run dev` (port 3000) — needs the AI service running
 - Tests/lint: `uv run pytest` · `uv run pre-commit run --all-files`
 
 **Env:** `.env` (gitignored) holds the keys; `.env.example` is the template. Models:
@@ -57,15 +58,24 @@ Detailed checklist + decisions: `docs/STAGE3_PLAN.md`. API reference: `docs/API.
 Optional `LANGFUSE_PROJECT_ID` → clickable Langfuse links on escalations. `AI_CORS_ORIGINS`
 for the Next.js origin.
 
+**Step 6 — Next.js frontend: LARGELY BUILT** (in `frontend/`, see the "Stage-3 Frontend
+architecture" section). Done: design system + configurable palettes (default **Signature**),
+phone-frame demo presentation, customer **chat Home** (wired to `/chat`), **Menu** (2-per-row tiles →
+inline build sheet: pizza→base→1–3 toppings→qty, live-priced), inline **cart**, dedicated
+**checkout** (COD/Cash/UPI, simulated payment), **Orders** tab (simulated live tracking), **profile**
+(hardcoded user), global cart icon. Additive backend endpoints added for it: `POST /api/cart/price`
+and `POST /api/cart/checkout` (+ 14 tests). Design decisions were made with the **`ui-ux-pro-max`
+skill** (installed via `uipro init --ai claude`, gitignored under `.claude/skills/`, regenerable).
+
 **Next session — NOT done yet:**
-1. **Step 6 — Next.js frontend** (chat + voice panels): call `POST /chat` and `/voice/*`;
-   MediaRecorder (`audio/webm;codecs=opus`), 3-min countdown, play `audio/mpeg` from synthesize,
-   store `session_id` in localStorage. Set `AI_CORS_ORIGINS` to the dev origin.
-2. **Step 7 — deploy the AI service**: the HF `Dockerfile` currently runs `app.py` (Gradio) on 7860.
-   Decide how to ship `ai.main` (separate Space/port, or one combined process) + update CI.
-3. Before any public deploy: **auth / rate-limiting** on `/chat` and `/voice/*` (none yet).
-4. Optional hardening: persist `tool`-role messages; rehydrate `history` from `messages` on restart;
-   **Redis** for sessions if running >1 worker/instance.
+1. **Voice UI** on chat Home: MediaRecorder (`audio/webm;codecs=opus`), 3-min countdown, play
+   `audio/mpeg` from `/voice/synthesize`. The mic button is a disabled placeholder seam today.
+2. **Staff kiosk + Admin** surfaces are placeholder routes (`/staff`, `/admin`) — build them out.
+3. **Step 7 — deploy**: HF `Dockerfile` runs `app.py` (Gradio) on 7860; decide how to ship
+   `ai.main` + the Next.js app + update CI. Before any public deploy: **auth / rate-limiting** on
+   `/chat` and `/voice/*` (none yet), and real order-status (Orders tracking is client-simulated).
+4. Optional hardening: persist `tool`-role messages; rehydrate `history` on restart; **Redis** for
+   sessions if running >1 worker/instance.
 
 **Conventions for the AI layer:** keep `core/` free of web/DB/LLM imports; tools return plain
 strings for the LLM and recompute money via `core/`; every Supabase call is best-effort (never
@@ -242,12 +252,90 @@ Keep `core/` clean of LLM/DB imports — all third-party AI/DB SDKs live under `
 | TTS | Deepgram Aura (English). Hindi TTS = Phase 2 swap (Google Cloud / Azure) — mark the seam |
 | Observability | Langfuse free tier |
 | Database | **OPEN** — Supabase (Postgres) is planned, but no core save function exists yet (see note) |
-| Frontend | **OPEN** — Next.js (per stack table) vs reuse the existing vanilla `web/` single-file UI |
+| Frontend | **DECIDED — Next.js 15** (App Router, TS, Tailwind v4, shadcn-style primitives). See "Stage-3 Frontend" below. |
 
-> **Two decisions are unresolved** and were left as-is from the draft: the **frontend framework**
-> (Next.js vs the existing vanilla `web/`) and the **database** (Supabase vs sticking to
-> `orders_log.txt`). Pick these before building those layers; the chat/voice/agent work doesn't
-> depend on either.
+> **Database is still OPEN** (Supabase vs sticking to `orders_log.txt`) — pick before building
+> that layer; the chat/voice/agent work doesn't depend on it. **Frontend is now decided: Next.js**
+> lives in `frontend/` — full conventions in the **Stage-3 Frontend architecture** section below.
+
+### Stage-3 Frontend architecture (`frontend/` — Next.js 15) — READ before touching the UI
+
+The web UI lives in **`frontend/`** (its own npm project; do NOT confuse with the graded Python
+`web/`/`app.py`). Stack: **Next.js 15 App Router + TypeScript + Tailwind v4 + shadcn-style
+primitives + Zustand + Framer Motion**, talking to the AI service over HTTP via
+`NEXT_PUBLIC_API_BASE` (default `http://localhost:7861`). It is **additive** — the graded Python
+path never depends on it.
+
+> We use **Next.js 15 (stable)**, not 16. `create-next-app` scaffolds 16 by default; we downgraded
+> for stability and **deleted its auto-generated `frontend/AGENTS.md` + `frontend/CLAUDE.md`**
+> (they described Next-16 behavior and injected agent "hints"). Do not reintroduce them.
+
+**The two load-bearing decisions (keep these invariants):**
+
+1. **Three independent surfaces, isolated by route group.** `app/(customer)/`, `app/(staff)/`,
+   and `app/(admin)/` each own their **own `layout.tsx`** (own nav/providers) and their own
+   feature code under `components/{customer,staff,admin}/`. They share **nothing** but the root
+   `app/layout.tsx` (fonts + `ThemeProvider`). Rationale: a teammate/LLM can build or change one
+   surface (e.g. admin) without importing from — or being able to break — the others. **Never make
+   one surface import another surface's components or layout.** **Auth + role-based access is a
+   FUTURE plan** — today each surface is a plain unguarded route (`/`, `/staff`, `/admin`) reached
+   by URL. When auth lands, the role gate goes in each group's `layout.tsx` (the seam is already
+   there); the correct screen is chosen by the signed-in user's role.
+
+2. **Configurable palettes via semantic CSS vars only.** All colors are semantic CSS variables in
+   `app/globals.css`, defined per palette under `[data-theme="..."]`; `lib/themes.ts` is the
+   registry and `components/theme-provider.tsx` swaps `<html data-theme>` (persisted to
+   localStorage). Components read tokens (`bg-primary`, `text-muted-foreground`, …) — **never a
+   raw hex**. Add a palette = one CSS block + one `THEMES` entry; everything else picks it up.
+
+   **Default = `brand` ("Signature") — the locked house palette. DO NOT deviate without asking.**
+   Five colors + tints only, **no pure white/black**: ink `#19181A` (dominant surface → `background`),
+   sage `#479761` (the ONE dominant accent/CTA → `primary`/`ring`/`success`/user bubble), sand
+   `#CEBC81` (sparing secondary/pay → `secondary`+`accent`), plum `#A16E83` (rare emphasis →
+   `destructive`; the palette has no red), stone `#B19F9E` (muted text/dividers → `muted-foreground`),
+   warm off-white `#EDE8E2` (`foreground`). Rules: ink dominates every surface; only one accent
+   visually dominant per screen (sage) — don't mix sage/sand/plum at equal weight; AA contrast (light
+   text on ink, dark ink text on sage/sand/stone). `midnight`/`classic`/`basil` remain as alt themes.
+
+**Shared vs. isolated (the seam that prevents cross-breakage):**
+- **Shared + stable:** `components/ui/` (Button, Card, Input, Badge — the design system) and
+  `lib/api.ts` (typed client). These are **additive-only**: add functions/variants, don't rewrite
+  existing ones. `lib/utils.ts` has `cn()` + `formatINR()`.
+- **Isolated per surface:** screens, feature components, and state stores (`lib/store.ts` is the
+  customer chat store; a future admin store is its own slice).
+
+**Customer UX flow (decided — honor exactly):** Home = a live **chat thread** (greeting +
+quick-reply chips + text/mic composer), voice is an **input modality into the same `/chat`
+pipeline** (not a separate mode); a separate **Menu** tab for browse/search with an **inline**
+customization sheet and **inline** cart sheet (no navigation); **only checkout** breaks the inline
+pattern to a dedicated `/checkout` route; after payment → **Orders** tab for tracking.
+**Demo framing (device idiom by role):** the customer app is phone-first — on desktop it renders in a
+**centered phone-width frame** (`max-w-md` column, `bg-backdrop` gutters, borders/shadow; `sm:`
+breakpoint), full-screen on real phones. Staff (kiosk) + admin (dashboard) are desktop-wide. This lets
+the grader see the true mobile user flow on any screen. Bottom sheets are `max-w-md` so they align with
+the frame. Header is centered (brand middle, cart + profile avatar right). The Next.js dev "N" indicator
+is disabled (`devIndicators: false`).
+
+**Staff** = kiosk POS (no chat/voice). **Admin** = not yet scoped. **Checkout stays a dedicated
+`/checkout` route, NOT inline** (money + sensitive data — deliberate). The **global header** carries
+a cart icon (opens the cart sheet from any screen via `menu-store.cartOpen`) + a profile avatar →
+`/profile`. **User is hardcoded** in `lib/user.ts` (`CURRENT_USER`) until auth lands; it prefills
+checkout. The palette switcher lives on `/profile` under "Appearance".
+
+**Money & menu rules still apply to the UI:** never compute prices client-side — only offer items
+from `/api/menu`, and price/place via the API. **Additive multi-topping cart endpoints** (in
+`api/routes.py`, `core` untouched): `POST /api/cart/price` and `POST /api/cart/checkout` accept
+lines of `{base_id, pizza_id, topping_ids[1..3], quantity}`; the server fuses the 1–3 toppings into
+one combined topping (summing menu prices) and calls the frozen `core.compute_bill`, then
+`append_order` **one log block per line**. `payment_mode`: COD & Cash both → `Cash` ("1"), UPI → `UPI`
+("3") — only Cash/Card/UPI are valid; Card is unused. Payment is **simulated** (no gateway; UPI shows
+a fake processing step). Known gaps: **no order-status/list endpoint** — the Orders tab tracks
+client-side via `lib/orders-store.ts` (localStorage) with a **simulated** status advancing on elapsed
+time; **no promo-code or size fields** (base = crust). Voice endpoints exist but MediaRecorder wiring
+is a later milestone. Checkout hides the bottom tab bar (dedicated screen).
+
+**Run:** `cd frontend && npm run dev` (port 3000). Set `AI_CORS_ORIGINS=http://localhost:3000` in
+the root `.env` so the AI service accepts browser calls.
 
 ### Environment variables (`.env`, loaded by `ai/config.py`)
 ```

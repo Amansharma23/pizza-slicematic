@@ -124,3 +124,19 @@ SM-000061 | 2026-06-30 18:25:01 | Aman Sharma | 9811122233 | Thin Crust | Marghe
 SM-000062 | 2026-06-30 18:25:48 | Aman Sharma | 9811122233 | Thin Crust | Margherita | Black Olives | 497.00 | 2 | 994.00 | 0.00 | 178.92 | 1172.92 | UPI
 
 SM-000063 | 2026-07-01 16:42:46 | mouli | 8790534222 | Thin Crust | Margherita | Black Olives | 497.00 | 5 | 2485.00 | 248.50 | 402.57 | 2639.07 | UPI
+
+SM-000064 | 2026-07-01 20:23:59 | Mouli | 8790312333 | Multigrain4 | Paneer Tikka | Peri-Peri Drizzle | 4577.00 | 4 | 18308.00 | 0.00 | 3295.44 | 21603.44 | Card
+
+SM-000065 | 2026-07-01 22:15:59 | Aarav Sharma | 9876543210 | Thin Crust | Margherita | Black Olives + Extra Cheese | 566.00 | 2 | 1132.00 | 0.00 | 203.76 | 1335.76 | Cash
+
+SM-000066 | 2026-07-01 22:20:23 | Aarav Sharma | 9876543210 | Cheese Burst | BBQ Chicken | Black Olives + Extra Cheese + Button Mushrooms | 775.00 | 5 | 3875.00 | 387.50 | 627.75 | 4115.25 | UPI
+
+SM-000067 | 2026-07-01 22:20:24 | Aarav Sharma | 9876543210 | Thin Crust | Margherita | Black Olives | 497.00 | 1 | 497.00 | 0.00 | 89.46 | 586.46 | UPI
+
+SM-000068 | 2026-07-01 22:22:13 | Aarav Sharma | 9876543210 | Multigrain4 | Paneer Tikka | Button Mushrooms + Jalapenos | 606.00 | 2 | 1212.00 | 0.00 | 218.16 | 1430.16 | UPI
+
+SM-000069 | 2026-07-01 22:22:13 | Aarav Sharma | 9876543210 | Multigrain4 | Pepperoni Classic | Button Mushrooms | 587.00 | 2 | 1174.00 | 0.00 | 211.32 | 1385.32 | UPI
+
+SM-000070 | 2026-07-01 22:29:55 | Aarav Sharma | 9876543210 | Multigrain2 | Chicago Deep Dish | Sweet Corn | 557.00 | 1 | 557.00 | 0.00 | 100.26 | 657.26 | Cash
+
+SM-000071 | 2026-07-01 22:58:24 | Aarav Sharma | 9876543210 | Multigrain4 | Margherita | Green Peppers + Sun-Dried Tomatoes | 566.00 | 1 | 566.00 | 0.00 | 101.88 | 667.88 | Cash
