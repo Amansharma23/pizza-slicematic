@@ -37,7 +37,8 @@ function OrdersContent() {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    void load(CURRENT_USER.id);
+    // Interim per-user filter (phone) until real auth lands — then user id.
+    void load(CURRENT_USER.phone);
   }, [load]);
 
   // Tick so the simulated status advances live while the tab is open.

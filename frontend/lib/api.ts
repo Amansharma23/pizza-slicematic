@@ -204,6 +204,12 @@ export function getUserOrders(userId: string): Promise<OrdersResponse> {
   );
 }
 
+/** Interim filter until real auth: list orders by the profile's phone number
+ *  (chat/voice + checkout orders all carry it). Swap back to user_id later. */
+export function getOrdersByPhone(phone: string): Promise<OrdersResponse> {
+  return getJSON<OrdersResponse>(`/api/orders?phone=${encodeURIComponent(phone)}`);
+}
+
 /* --------------------------- Voice -------------------------- */
 
 export interface TranscribeResponse {

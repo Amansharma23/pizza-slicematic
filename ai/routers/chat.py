@@ -10,6 +10,7 @@ threadpool — the blocking LLM call doesn't stall the event loop.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks
@@ -53,12 +54,20 @@ class ChatResponse(BaseModel):
 def chat(req: ChatRequest, background: BackgroundTasks) -> ChatResponse:
     session_id = req.session_id or uuid.uuid4().hex
     session = sess.get_or_create(session_id, channel="chat")
+    session.channel = "chat"
     session.language = detect(req.message)
 
     with sess.lock_for(session_id):
         check = guardrails.check_input(req.message)
         if check.ok:
+            t0 = time.perf_counter()
             reply = agent.run_turn(session, req.message)
+            log.info(
+                "[timing] AGENT(chat) %.2fs (lang=%s -> %d chars)",
+                time.perf_counter() - t0,
+                session.language,
+                len(reply),
+            )
             blocked = False
         else:
             reply = check.message

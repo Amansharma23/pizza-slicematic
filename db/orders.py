@@ -119,3 +119,19 @@ def list_orders_by_user(user_id: str, limit: int = 50) -> list[dict]:
         .limit(limit)
     )
     return getattr(resp, "data", None) or []
+
+
+def list_orders_by_phone(phone: str, limit: int = 50) -> list[dict]:
+    """Return orders for a phone number, newest first (interim user filter until
+    real auth lands and everything keys on user_id). Empty if the DB is absent."""
+    client = get_client()
+    if client is None:
+        return []
+    resp = execute_query(
+        client.table("orders")
+        .select("*")
+        .eq("customer_phone", phone)
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    return getattr(resp, "data", None) or []

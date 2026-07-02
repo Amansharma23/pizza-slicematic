@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 _STT_URL = "https://api.deepgram.com/v1/listen"
 _TTS_URL = "https://api.deepgram.com/v1/speak"
-_TTS_MODEL_EN = "aura-asteria-en"
+_TTS_MODEL_EN = "aura-orion-en"  # male English voice (Aura)
 
 
 def transcribe(audio: bytes, content_type: str = "audio/webm") -> tuple[str, float]:

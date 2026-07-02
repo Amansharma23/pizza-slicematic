@@ -31,11 +31,7 @@ export function ChatThread() {
             <ChatBubble key={m.id} message={m} />
           ))}
 
-          {showQuickReplies && (
-            <div className="mt-2 pl-1">
-              <QuickReplies onPick={send} disabled={isSending} />
-            </div>
-          )}
+
 
           {error && (
             <div
@@ -50,7 +46,12 @@ export function ChatThread() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-2xl">
+      <div className="mx-auto w-full max-w-2xl flex flex-col">
+        {showQuickReplies && (
+          <div className="px-4 pb-2">
+            <QuickReplies onPick={send} disabled={isSending} />
+          </div>
+        )}
         <Composer onSend={send} disabled={isSending} />
       </div>
     </div>

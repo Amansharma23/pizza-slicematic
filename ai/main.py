@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,33 +22,51 @@ from ai.routers.chat import router as chat_router
 from ai.routers.voice import router as voice_router
 from api.routes import router as api_router
 
+# Show our INFO logs (timing, STT results). Without this the root logger stays at
+# WARNING, so only warnings surfaced (which is why the timing lines never showed).
+logging.getLogger("ai").setLevel(logging.INFO)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO)
+
 log = logging.getLogger(__name__)
+
+
+def _warmup() -> None:
+    """Warm every cold path the first customer would otherwise pay for.
+
+    A bare 1-token "ping" is NOT enough (measured: first real turn still took
+    ~6-7s) — the first real request carries the full system prompt + tool
+    schemas, which the provider processes/caches per prefix. So fire one
+    REAL-shaped turn through the same _complete() path as live chat: same
+    prompt, same tools, same reasoning-off settings. The throwaway session is
+    never stored. Best-effort: a warmup failure (no keys/network) must never
+    stop the server."""
+    try:
+        from ai import agent, guardrails, observability, tools
+        from ai.session import Session
+        from db.client import get_client as get_db
+
+        observability.get_langfuse()
+        get_db()
+        tools._load_active_menu()
+        warm = Session(id="warmup", channel="chat")
+        agent._set_system_prompt(warm)
+        warm.add("user", "ping")
+        agent._complete(warm)
+        # The input guardrail's cheap-LLM classifier is its own cold path
+        # (measured ~2s on the first >3-word message) — warm it with a message
+        # long enough to bypass the short-message heuristic.
+        guardrails.check_input("hello there, I would like to order a pizza please")
+        log.info("AI warmup complete (agent + guardrail LLM turns)")
+    except Exception as exc:
+        log.warning("AI warmup skipped: %s", exc)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm up clients + the OpenRouter connection at boot so the first real
-    request is fast (otherwise it eats ~7-19s of cold-start). Best-effort: a
-    warmup failure (no keys/network) must never stop the server from starting.
-    """
-    try:
-        from ai import observability, tools
-        from ai.config import get_settings
-        from ai.llm import get_client
-        from db.client import get_client as get_db
-
-        settings = get_settings()
-        observability.get_langfuse()
-        get_db()
-        tools._load_active_menu()
-        get_client().chat.completions.create(
-            model=settings.primary_model,
-            messages=[{"role": "user", "content": "ping"}],
-            max_tokens=1,
-        )
-        log.info("AI warmup complete")
-    except Exception as exc:
-        log.warning("AI warmup skipped: %s", exc)
+    # Daemon thread: the server binds immediately; the warmup races the first
+    # customer instead of delaying boot (matters on hosts with health checks).
+    threading.Thread(target=_warmup, daemon=True).start()
     yield
 
 

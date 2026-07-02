@@ -18,20 +18,9 @@ const CAP_MS = 180_000; // 3-minute call cap
 const SILENCE_MS = 1200; // trailing silence that ends a spoken turn
 const MAX_SEG_MS = 15_000; // hard cap on a single utterance
 const SPEECH_LEVEL = 0.02; // RMS threshold that counts as speech
-const FILLER_AFTER_MS = 700; // if the agent is slower than this, play a filler
 
 // Spoken the instant a call connects — hardcoded so there's no LLM latency.
 const CALL_GREETING = "Hey! Welcome to SliceMatic. What are you craving today?";
-// Cover agent latency so the call never has dead air ("hold on a sec").
-const FILLERS = [
-  "Let me check that for you.",
-  "One moment.",
-  "Sure, just a second.",
-  "Got it — let me see.",
-];
-function pickFiller() {
-  return FILLERS[Math.floor(Math.random() * FILLERS.length)];
-}
 
 export type VoiceState =
   | "idle"
@@ -203,22 +192,14 @@ function createCallMachine({ setState, setError, setRemainingMs, setMuted }: Set
       return;
     }
 
-    // Run the agent; if it's slow, cover the silence with a spoken filler so the
-    // call feels live ("let me check that…") instead of going quiet.
-    const replyPromise = useChatStore.getState().sendVoice(transcript);
-    const fast = await Promise.race([
-      replyPromise.then((reply) => ({ reply })),
-      new Promise<null>((res) => setTimeout(() => res(null), FILLER_AFTER_MS)),
-    ]);
+    // Run the agent, then speak the reply. (No filler phrases — brevity is
+    // handled by the voice system prompt instead.)
+    const reply = await useChatStore.getState().sendVoice(transcript);
     if (!active) return;
-
-    setState("speaking");
-    if (!fast) await playTts(pickFiller());
-    if (!active) return;
-
-    const reply = fast ? fast.reply : await replyPromise;
-    if (!active) return;
-    if (reply) await playTts(reply);
+    if (reply) {
+      setState("speaking");
+      await playTts(reply);
+    }
     if (active) beginListening();
   }
 
