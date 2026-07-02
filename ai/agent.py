@@ -26,8 +26,14 @@ def build_system_prompt(session, menu_text: str) -> str:
     s = get_settings()
     lang = "Hindi" if session.language == "hi" else "English"
     voice_note = (
-        "\n- This is a VOICE call: reply in short, natural spoken sentences — no "
-        "markdown, lists, or symbols."
+        "\n\nVOICE CALL — you are on a live phone call, so:\n"
+        "- Reply in 1-2 short, natural spoken sentences. No markdown, bullet lists, or symbols.\n"
+        "- NEVER read a long list aloud. If asked about the menu, do NOT enumerate everything —"
+        " mention 2-3 options and ask what they're in the mood for, or which category"
+        " (base, pizza, or topping) they'd like to hear.\n"
+        "- Read the bill back briefly (e.g. 'that comes to 677 rupees') — don't spell out every"
+        " line item.\n"
+        "- Ask one question at a time and keep the conversation moving."
         if session.channel == "voice"
         else ""
     )
@@ -82,6 +88,8 @@ def _complete(session):
     lf = observability.trace_kwargs(
         session.id, f"{session.channel}-turn", language=session.language
     )
+    # Cap voice replies to keep them short and fast to generate/speak.
+    extra = {"max_tokens": 160} if session.channel == "voice" else {}
     last_exc = None
     for model in get_settings().models:
         try:
@@ -90,6 +98,7 @@ def _complete(session):
                 messages=session.history,
                 tools=tools.TOOL_DEFINITIONS,
                 temperature=TEMPERATURE,
+                **extra,
                 **lf,
             )
             return resp, model

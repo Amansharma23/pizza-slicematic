@@ -17,8 +17,9 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from ai import agent, deepgram, guardrails
+from ai import agent, deepgram, guardrails, sarvam
 from ai import session as sess
+from ai.config import get_settings
 from ai.language import detect
 from ai.routers.chat import _persist_turn
 
@@ -114,5 +115,16 @@ class SynthesizeRequest(BaseModel):
 
 @router.post("/voice/synthesize")
 def synthesize(req: SynthesizeRequest) -> Response:
-    audio = deepgram.synthesize(req.text, language=req.language)
+    # Sarvam (Bulbul) is the primary voice for BOTH languages — native Hindi and
+    # Indian-accented English. We pass the detected language code (hi-IN/en-IN);
+    # Bulbul also handles code-mixed Hinglish. Deepgram Aura is the fallback only
+    # if Sarvam is unconfigured or errors (English-only).
+    if get_settings().sarvam_enabled:
+        try:
+            lang_code = "hi-IN" if detect(req.text) == "hi" else "en-IN"
+            audio = sarvam.synthesize(req.text, language_code=lang_code)
+            return Response(content=audio, media_type="audio/wav")
+        except Exception as exc:
+            log.warning("Sarvam TTS failed, falling back to Deepgram: %s", exc)
+    audio = deepgram.synthesize(req.text, language="en")
     return Response(content=audio, media_type="audio/mpeg")
