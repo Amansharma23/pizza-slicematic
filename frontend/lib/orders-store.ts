@@ -2,13 +2,14 @@
 
 import { create } from "zustand";
 
-import { getUserOrders, type UserOrder } from "@/lib/api";
+import { getOrdersByPhone, type UserOrder } from "@/lib/api";
 
 /**
- * Orders for the Orders tab, loaded from the DB (source of truth for API
- * orders) via GET /api/orders?user_id=. There is no backend order-status yet,
- * so the status shown is *simulated* client-side from `created_at` (see
- * orderStatus). Refetched on tab mount.
+ * Orders for the Orders tab, loaded from the DB (source of truth for API and
+ * chat/voice orders) via GET /api/orders?phone= — the profile's phone is the
+ * interim per-user filter until real auth lands (then: user_id). There is no
+ * backend order-status yet, so the status shown is *simulated* client-side
+ * from `created_at` (see orderStatus). Refetched on tab mount.
  */
 
 export const ORDER_STEPS = [
@@ -31,7 +32,7 @@ interface OrdersState {
   orders: UserOrder[];
   loading: boolean;
   error: string | null;
-  load: (userId: string) => Promise<void>;
+  load: (phone: string) => Promise<void>;
 }
 
 export const useOrdersStore = create<OrdersState>((set) => ({
@@ -39,10 +40,10 @@ export const useOrdersStore = create<OrdersState>((set) => ({
   loading: false,
   error: null,
 
-  load: async (userId: string) => {
+  load: async (phone: string) => {
     set({ loading: true, error: null });
     try {
-      const res = await getUserOrders(userId);
+      const res = await getOrdersByPhone(phone);
       if (res.ok && res.orders) {
         set({ orders: res.orders, loading: false });
       } else {

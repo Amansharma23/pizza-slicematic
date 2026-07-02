@@ -170,3 +170,9 @@ SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ |
 SM-000077 | 2026-07-02 00:52:12 | Mouli | 9086423289 | Multigrain2 | Mouli BBQ | Roasted Garlic | 677.00 | 2 | 1354.00 | 0.00 | 243.72 | 1597.72 | Card
 
 SM-000078 | 2026-07-02 01:50:17 | Mauli | 8790312333 | Multigrain | Margherita | Roasted Garlic | 517.00 | 1 | 517.00 | 0.00 | 93.06 | 610.06 | Cash
+
+SM-000079 | 2026-07-02 18:59:40 | mouli | 8790312333 | Thin Crust | California Veggie | Extra Cheese + Green Peppers + Peri-Peri Drizzle | 655.00 | 2 | 1310.00 | 0.00 | 235.80 | 1545.80 | UPI
+
+SM-000080 | 2026-07-02 22:34:05 | Mouli | 8790312333 | Multigrain | Paneer Tikka | Extra Cheese + Sweet Corn + Green Peppers | 665.00 | 9 | 5985.00 | 598.50 | 969.57 | 6356.07 | UPI
+
+SM-000081 | 2026-07-02 22:40:11 | mou | 8790312333 | Thin Crust | Chicago Deep Dish | Green Peppers + Extra Cheese + Button Mushrooms | 655.00 | 6 | 3930.00 | 393.00 | 636.66 | 4173.66 | Card

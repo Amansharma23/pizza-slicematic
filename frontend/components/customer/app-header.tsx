@@ -1,10 +1,11 @@
 "use client";
 
-import { Pizza, ShoppingBag } from "lucide-react";
+import { Pizza, ShoppingBag, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { useMenuStore } from "@/lib/menu-store";
+import { useChatStore } from "@/lib/store";
 import { CURRENT_USER } from "@/lib/user";
 
 // Checkout is a dedicated screen with its own back/title header — hide the
@@ -16,6 +17,7 @@ export function AppHeader() {
   const cart = useMenuStore((s) => s.cart);
   const openCart = useMenuStore((s) => s.openCart);
   const count = cart.reduce((n, l) => n + l.quantity, 0);
+  const resetChat = useChatStore((s) => s.reset);
 
   if (HIDE_ON.some((p) => pathname.startsWith(p))) return null;
 
@@ -37,6 +39,18 @@ export function AppHeader() {
       </Link>
 
       <div className="flex items-center justify-end gap-1">
+        <button
+          type="button"
+          aria-label="Start new chat"
+          onClick={() => {
+            resetChat();
+            if (pathname !== "/") window.location.href = "/";
+          }}
+          className="relative grid size-9 cursor-pointer place-items-center rounded-full text-foreground transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:size-5"
+        >
+          <RotateCcw />
+        </button>
+
         <button
           type="button"
           aria-label={`View order${count ? `, ${count} item${count === 1 ? "" : "s"}` : ""}`}

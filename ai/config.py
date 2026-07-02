@@ -54,10 +54,12 @@ class Settings:
     brand: str = "SliceMatic"
     menu_dir: str = "menu_data"
     openrouter_base_url: str = OPENROUTER_BASE_URL
-    # Sarvam AI (Bulbul) — native Hindi TTS. English stays on Deepgram Aura.
+    # Sarvam AI — full voice pipeline for Hindi + Indian English.
+    # Saarika = STT (auto-detects language), Bulbul = TTS. Deepgram is fallback.
     sarvam_api_key: str | None = None
     sarvam_speaker: str = "anushka"
     sarvam_model: str = "bulbul:v2"
+    sarvam_stt_model: str = "saarika:v2.5"
 
     @property
     def models(self) -> tuple[str, ...]:
@@ -111,4 +113,5 @@ def get_settings() -> Settings:
         sarvam_api_key=_env("SARVAM_API_KEY"),
         sarvam_speaker=_env("SARVAM_SPEAKER") or "anushka",
         sarvam_model=_env("SARVAM_MODEL") or "bulbul:v2",
+        sarvam_stt_model=_env("SARVAM_STT_MODEL") or "saarika:v2.5",
     )

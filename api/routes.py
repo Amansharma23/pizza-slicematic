@@ -425,14 +425,20 @@ def checkout_cart(req: CheckoutReq):
 
 
 @router.get("/orders")
-def list_orders(user_id: str = ""):
-    """List a user's orders (newest first) from the DB — the API source of truth."""
-    if not user_id:
-        return {"ok": False, "errors": {"user_id": "user_id is required."}}
+def list_orders(user_id: str = "", phone: str = ""):
+    """List a user's orders (newest first) from the DB — the API source of truth.
+
+    Filter by phone (interim, until real auth) or user_id; phone wins if both
+    are sent. The frontend currently passes the profile's phone."""
+    if not user_id and not phone:
+        return {"ok": False, "errors": {"filter": "phone or user_id is required."}}
     if db_orders is None:
         return {"ok": False, "errors": {"db": "Order database is unavailable."}}
     try:
-        orders = db_orders.list_orders_by_user(user_id)
+        if phone:
+            orders = db_orders.list_orders_by_phone(phone)
+        else:
+            orders = db_orders.list_orders_by_user(user_id)
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
     return {"ok": True, "orders": orders}
