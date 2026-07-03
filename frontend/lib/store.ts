@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 import { sendChat, voiceRespond } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 const SESSION_KEY = "slicematic-session-id";
 
@@ -85,7 +86,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const res = await sendChat(trimmed, get().sessionId);
+      // JWT lets the backend serve the signed-in profile to the agent.
+      const res = await sendChat(
+        trimmed,
+        get().sessionId,
+        useAuthStore.getState().token
+      );
       window.localStorage.setItem(SESSION_KEY, res.session_id);
       set((s) => ({
         sessionId: res.session_id,
@@ -131,7 +137,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const res = await voiceRespond(trimmed, get().sessionId);
+      const res = await voiceRespond(
+        trimmed,
+        get().sessionId,
+        useAuthStore.getState().token
+      );
       window.localStorage.setItem(SESSION_KEY, res.session_id);
       set((s) => ({
         sessionId: res.session_id,

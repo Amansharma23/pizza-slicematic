@@ -33,14 +33,9 @@ except Exception:  # additive layer optional
 
 log = logging.getLogger(__name__)
 
-# Hardcoded demo profile — mirrors frontend/lib/user.ts CURRENT_USER. Real auth
-# will replace this with a lookup keyed by the request's user_id.
-CUSTOMER_PROFILE = {
-    "user_id": "11111111-1111-1111-1111-111111111111",
-    "name": "Aarav Sharma",
-    "phone": "9876543210",
-    "address": "D-42, New Ashok Nagar, New Delhi 110096 (Home)",
-}
+# The customer profile comes from the SESSION: ai/profile.attach_user decodes
+# the request's JWT and loads the app_users row onto session.user_id/name/
+# phone/address each turn. No hardcoded profile remains.
 
 
 # --------------------------------------------------------------------------- #
@@ -283,14 +278,20 @@ def _get_menu(args, session) -> str:
 
 
 def _get_customer_profile(args, session) -> str:
-    """Hardcoded demo profile (stands in for auth). Also primes the session so
-    confirm_and_save_order can fall back to these values."""
-    p = CUSTOMER_PROFILE
-    if session is not None:
-        session.name, session.phone = p["name"], p["phone"]
+    """The signed-in customer's profile, resolved from app_users onto the
+    session by ai/profile.attach_user (JWT sent by the frontend each turn)."""
+    if session is None or not (session.name and session.phone):
+        return (
+            "No signed-in profile found. Ask the customer for their name and "
+            "10-digit phone number before saving any order."
+        )
+    address = session.address or (
+        "NONE SAVED — a delivery address is required before the order can be "
+        "placed; ask the customer to add one in the Profile tab, then continue."
+    )
     return (
-        f"Saved profile — name: {p['name']}, phone: {p['phone']}, "
-        f"delivery address: {p['address']}. Use these; never ask the customer "
+        f"Saved profile — name: {session.name}, phone: {session.phone}, "
+        f"delivery address: {address}. Use these; never ask the customer "
         "to type them."
     )
 
@@ -398,6 +399,13 @@ def _confirm_and_save_order(args, session) -> str:
     except MenuError as exc:
         return f"Menu unavailable: {exc}"
     errors.extend(line_errors)
+    # Signed-in customers must have a saved delivery address before any chat/
+    # voice order is placed (chat orders are delivered; there is no pickup flow).
+    if session is not None and session.user_id and not session.address:
+        errors.append(
+            "No delivery address saved on the profile. Ask the customer to add "
+            "one in the Profile tab, then confirm again."
+        )
     if errors:
         return "Cannot place the order yet:\n- " + "\n- ".join(errors)
     name, phone, mode = clean["name"], clean["phone"], clean["payment_mode"]
@@ -431,7 +439,7 @@ def _confirm_and_save_order(args, session) -> str:
         )
     try:
         order_no = db_orders.create_order(
-            user_id=CUSTOMER_PROFILE["user_id"],
+            user_id=(session.user_id if session else None),
             name=name,
             phone=phone,
             items=items,
@@ -443,6 +451,7 @@ def _confirm_and_save_order(args, session) -> str:
             source=source,
             session_id=(session.id if session else None),
             language=(session.language if session else None),
+            delivery_address=(session.address if session else None),
         )
     except Exception as exc:  # DB is the source of truth — surface, don't swallow
         log.warning("Order save failed: %s", exc)

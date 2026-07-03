@@ -17,8 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { UserOrder } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { ORDER_STEPS, orderStatus, useOrdersStore } from "@/lib/orders-store";
-import { CURRENT_USER } from "@/lib/user";
 import { cn, formatINR } from "@/lib/utils";
 
 const STEP_ICONS = [Check, ChefHat, Bike, PackageCheck];
@@ -33,13 +33,15 @@ export default function OrdersPage() {
 
 function OrdersContent() {
   const { orders, loading, error, load } = useOrdersStore();
+  const phone = useAuthStore((s) => s.user?.phone);
   const placed = useSearchParams().get("placed");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    // Interim per-user filter (phone) until real auth lands — then user id.
-    void load(CURRENT_USER.phone);
-  }, [load]);
+    // Per-user filter by the signed-in account's phone (chat/voice + checkout
+    // orders all carry it); swapping to user_id is part of the authz step.
+    if (phone) void load(phone);
+  }, [load, phone]);
 
   // Tick so the simulated status advances live while the tab is open.
   useEffect(() => {

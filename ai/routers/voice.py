@@ -13,7 +13,7 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Header, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -21,6 +21,7 @@ from ai import agent, deepgram, guardrails, sarvam
 from ai import session as sess
 from ai.config import get_settings
 from ai.language import detect
+from ai.profile import attach_user
 from ai.routers.chat import _persist_turn
 
 log = logging.getLogger(__name__)
@@ -101,11 +102,17 @@ class VoiceRespondRequest(BaseModel):
 
 
 @router.post("/voice/respond")
-def respond(req: VoiceRespondRequest, background: BackgroundTasks) -> dict:
+def respond(
+    req: VoiceRespondRequest,
+    background: BackgroundTasks,
+    authorization: str | None = Header(default=None),
+) -> dict:
     session_id = req.session_id or uuid.uuid4().hex
     session = sess.get_or_create(session_id, channel="voice")
     session.channel = "voice"
     session.language = detect(req.transcript)
+    # Signed-in customer (JWT) → real profile for get_customer_profile.
+    attach_user(session, authorization)
 
     with sess.lock_for(session_id):
         check = guardrails.check_input(req.transcript)
