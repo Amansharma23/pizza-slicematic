@@ -332,7 +332,7 @@ def test_list_orders_returns_user_rows(client, monkeypatch):
     c, _ = client
 
     class _DB:
-        def list_orders_by_user(self, user_id, limit=50):
+        def list_orders_by_user(self, user_id, limit=50, type=None, status=None):
             return [{"order_no": "SM-20260702-0001", "user_id": user_id}]
 
     monkeypatch.setattr(routes, "db_orders", _DB())
@@ -347,7 +347,7 @@ def test_list_orders_by_phone(client, monkeypatch):
     c, _ = client
 
     class _DB:
-        def list_orders_by_phone(self, phone, limit=50):
+        def list_orders_by_phone(self, phone, limit=50, type=None, status=None):
             return [{"order_no": "SM-20260703-0001", "customer_phone": phone}]
 
     monkeypatch.setattr(routes, "db_orders", _DB())

@@ -11,7 +11,7 @@ import { CallPanel } from "./call-panel";
 // Voice is DISABLED for this release: hides the call button/panel only. The
 // backend /voice/* routes and use-voice hook stay intact — flip to true to
 // re-enable the whole voice UI.
-const VOICE_ENABLED = false;
+const VOICE_ENABLED = true;
 
 export function Composer({
   onSend,

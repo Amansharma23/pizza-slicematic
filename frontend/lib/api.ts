@@ -354,6 +354,11 @@ export function getRecentOrders(): Promise<OrdersResponse> {
 
 /* --------------------------- Voice -------------------------- */
 
+/** wss://.../voice/call (or ws:// for local dev) — the realtime call socket. */
+export function voiceCallWsUrl(): string {
+  return `${API_BASE.replace(/^http/, "ws")}/voice/call`;
+}
+
 export interface TranscribeResponse {
   session_id: string;
   transcript: string;

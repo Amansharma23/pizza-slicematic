@@ -2,25 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { startVoiceCall, synthesizeSpeech, transcribeVoice } from "@/lib/api";
+import { voiceCallWsUrl } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { useChatStore } from "@/lib/store";
-
-/**
- * Hands-free voice CALL for the chat (Claude-app style). Tap to start a call:
- * the mic listens continuously, voice-activity detection (Web Audio analyser)
- * auto-ends your turn on silence → /voice/transcribe → the transcript enters the
- * SAME chat thread (store.sendVoice) → /voice/synthesize the reply → speak it →
- * listen again. Loops until you hang up or the 3-minute cap is hit. The whole
- * exchange also shows as chat bubbles.
- */
-
-const CAP_MS = 180_000; // 3-minute call cap
-const SILENCE_MS = 1200; // trailing silence that ends a spoken turn
-const MAX_SEG_MS = 15_000; // hard cap on a single utterance
-const SPEECH_LEVEL = 0.02; // RMS threshold that counts as speech
-
-// Spoken the instant a call connects — hardcoded so there's no LLM latency.
-const CALL_GREETING = "Hey! Welcome to SliceMatic. What are you craving today?";
+import { StreamingAudioPlayer } from "@/lib/voice/audio-player";
+import { startMicCapture } from "@/lib/voice/mic-capture";
+import { useRestVoiceCall } from "@/lib/voice/rest-call-machine";
 
 export type VoiceState =
   | "idle"
@@ -32,22 +19,43 @@ export type VoiceState =
   | "denied"
   | "unsupported";
 
+/**
+ * Realtime, full-duplex voice call: continuous mic streaming over one
+ * WebSocket to /voice/call, server-side turn detection (VAD), streaming TTS
+ * playback, and barge-in. Replaces the old record-on-silence -> upload ->
+ * batch STT/LLM/TTS -> download -> play pipeline. See
+ * reference/VOICE_PIPELINE_ARCHITECTURE.md for the general pattern and why
+ * each piece is built this way.
+ *
+ * Set NEXT_PUBLIC_VOICE_MODE=rest to fall back to the original REST
+ * implementation (lib/voice/rest-call-machine.ts, preserved verbatim)
+ * without a code rollback — a safety net for a rewrite this size.
+ */
+
+const CAP_MS = 180_000; // matches the server's 3-minute cap (authoritative server-side)
+
 function isSupported(): boolean {
   return (
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
-    typeof MediaRecorder !== "undefined" &&
+    typeof WebSocket !== "undefined" &&
     (typeof AudioContext !== "undefined" ||
       typeof (window as unknown as { webkitAudioContext?: unknown })
         .webkitAudioContext !== "undefined")
   );
 }
 
-function recorderOpts(): MediaRecorderOptions {
-  for (const mimeType of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
-    if (MediaRecorder.isTypeSupported(mimeType)) return { mimeType };
+function endReasonMessage(reason: string): string {
+  switch (reason) {
+    case "cap_reached":
+      return "Call ended (3-minute limit). Start a new call or keep typing.";
+    case "stt_unavailable":
+      return "Voice service is temporarily unavailable. Please try again shortly.";
+    case "connection_lost":
+      return "Connection lost. Start a new call when you're ready.";
+    default:
+      return "Something went wrong with the call. Please try again.";
   }
-  return {};
 }
 
 interface Setters {
@@ -57,174 +65,115 @@ interface Setters {
   setMuted: (m: boolean) => void;
 }
 
-/** Imperative call machine — built once, drives its own audio via closures to
- *  avoid React stale-closure issues in the listen/respond/speak loop. */
-function createCallMachine({ setState, setError, setRemainingMs, setMuted }: Setters) {
+/** Imperative call machine, mirroring the REST version's shape (built once
+ *  via closures) but driving the realtime WS protocol instead. */
+function createRealtimeCallMachine({
+  setState,
+  setError,
+  setRemainingMs,
+  setMuted,
+}: Setters) {
+  let ws: WebSocket | null = null;
   let stream: MediaStream | null = null;
-  let audioCtx: AudioContext | null = null;
-  let analyser: AnalyserNode | null = null;
-  let recorder: MediaRecorder | null = null;
-  let chunks: Blob[] = [];
-  let audioEl: HTMLAudioElement | null = null;
-  let raf = 0;
+  let micStop: (() => void) | null = null;
+  let player: StreamingAudioPlayer | null = null;
   let active = false;
   let muted = false;
-  let hasSpoken = false;
-  let lastSpeech = 0;
-  let segStart = 0;
   let startedAt = 0;
+  let capTimer: ReturnType<typeof setInterval> | null = null;
 
   function cleanup() {
-    cancelAnimationFrame(raf);
-    if (recorder && recorder.state !== "inactive") {
-      recorder.onstop = null;
+    if (capTimer) {
+      clearInterval(capTimer);
+      capTimer = null;
+    }
+    micStop?.();
+    micStop = null;
+    stream?.getTracks().forEach((t) => t.stop());
+    stream = null;
+    player?.close();
+    player = null;
+    if (ws) {
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
       try {
-        recorder.stop();
+        ws.close();
       } catch {
         /* ignore */
       }
+      ws = null;
     }
-    recorder = null;
-    stream?.getTracks().forEach((t) => t.stop());
-    stream = null;
-    audioCtx?.close().catch(() => {});
-    audioCtx = null;
-    analyser = null;
-    if (audioEl) {
-      audioEl.pause();
-      audioEl = null;
+  }
+
+  function startCapTimer() {
+    // setInterval (not requestAnimationFrame) so the countdown keeps ticking
+    // in a backgrounded tab — cosmetic only, since the server enforces the
+    // real cap regardless of what the client displays.
+    capTimer = setInterval(() => {
+      const rem = Math.max(0, CAP_MS - (Date.now() - startedAt));
+      setRemainingMs(rem);
+      if (rem <= 0 && capTimer) {
+        clearInterval(capTimer);
+        capTimer = null;
+      }
+    }, 250);
+  }
+
+  function handleControl(msg: Record<string, unknown>) {
+    const store = useChatStore.getState();
+    switch (msg.type) {
+      case "vad":
+        break; // informational only — the mic never stops in realtime mode
+      case "barge_in":
+        player?.stopAll();
+        if (active) setState("listening");
+        break;
+      case "user_transcript":
+        store.appendUserMessage(String(msg.text ?? ""));
+        if (active) setState("thinking");
+        break;
+      case "assistant_text":
+        store.appendAssistantMessage(String(msg.text ?? ""), {
+          blocked: Boolean(msg.blocked),
+          escalated: Boolean(msg.escalated),
+        });
+        if (active) setState("speaking");
+        break;
+      case "assistant_audio_end":
+        player?.markEnd(() => {
+          if (active) setState("listening");
+        });
+        break;
+      case "tts_failed":
+        if (active) setState("listening");
+        break;
+      case "call_ended": {
+        const reason = String(msg.reason ?? "server_error");
+        if (reason !== "user") setError(endReasonMessage(reason));
+        active = false;
+        cleanup();
+        setRemainingMs(null);
+        setState(reason === "user" ? "idle" : "ended");
+        break;
+      }
+      default:
+        break;
     }
   }
 
   function endCall(reason: "user" | "ended" = "user") {
+    if (active && ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: "end_call" }));
+      } catch {
+        /* ignore */
+      }
+    }
     active = false;
     cleanup();
     setRemainingMs(null);
     setState(reason === "ended" ? "ended" : "idle");
-  }
-
-  function rms(): number {
-    if (!analyser) return 0;
-    const buf = new Uint8Array(analyser.fftSize);
-    analyser.getByteTimeDomainData(buf);
-    let sum = 0;
-    for (let i = 0; i < buf.length; i++) {
-      const v = (buf[i] - 128) / 128;
-      sum += v * v;
-    }
-    return Math.sqrt(sum / buf.length);
-  }
-
-  function monitor() {
-    if (!active) return;
-    const now = Date.now();
-    const rem = Math.max(0, CAP_MS - (now - startedAt));
-    setRemainingMs(rem);
-    if (rem <= 0) {
-      endCall("ended");
-      return;
-    }
-    if (!muted) {
-      if (rms() > SPEECH_LEVEL) {
-        hasSpoken = true;
-        lastSpeech = now;
-      }
-      const endedTurn = hasSpoken && now - lastSpeech > SILENCE_MS;
-      const tooLong = hasSpoken && now - segStart > MAX_SEG_MS;
-      if (endedTurn || tooLong) {
-        stopSegment();
-        return;
-      }
-    }
-    raf = requestAnimationFrame(monitor);
-  }
-
-  function beginListening() {
-    if (!active) return;
-    setState("listening");
-    chunks = [];
-    hasSpoken = false;
-    lastSpeech = Date.now();
-    segStart = Date.now();
-    try {
-      recorder = new MediaRecorder(stream!, recorderOpts());
-    } catch {
-      recorder = new MediaRecorder(stream!);
-    }
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
-    recorder.onstop = () => void processSegment();
-    recorder.start();
-    raf = requestAnimationFrame(monitor);
-  }
-
-  function stopSegment() {
-    cancelAnimationFrame(raf);
-    if (recorder && recorder.state !== "inactive") recorder.stop();
-  }
-
-  async function processSegment() {
-    if (!active) return;
-    if (!hasSpoken) {
-      beginListening(); // no speech captured — keep listening
-      return;
-    }
-    setState("thinking");
-    const blob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
-    const sessionId = useChatStore.getState().ensureSessionId();
-
-    let transcript = "";
-    try {
-      const tr = await transcribeVoice(blob, sessionId);
-      if (!active) return;
-      if (tr.call_ended) {
-        endCall("ended");
-        return;
-      }
-      if (tr.error || !tr.transcript?.trim()) {
-        beginListening();
-        return;
-      }
-      transcript = tr.transcript;
-    } catch {
-      if (active) beginListening();
-      return;
-    }
-
-    // Run the agent, then speak the reply. (No filler phrases — brevity is
-    // handled by the voice system prompt instead.)
-    const reply = await useChatStore.getState().sendVoice(transcript);
-    if (!active) return;
-    if (reply) {
-      setState("speaking");
-      await playTts(reply);
-    }
-    if (active) beginListening();
-  }
-
-  /** Synthesize + play; resolves when playback ends (so turns can be sequenced). */
-  async function playTts(text: string): Promise<void> {
-    if (!active) return;
-    let blob: Blob;
-    try {
-      blob = await synthesizeSpeech(text);
-    } catch {
-      return; // TTS failed — reply still visible as text
-    }
-    if (!active) return;
-    await new Promise<void>((resolve) => {
-      const url = URL.createObjectURL(blob);
-      audioEl = new Audio(url);
-      const done = () => {
-        URL.revokeObjectURL(url);
-        audioEl = null;
-        resolve();
-      };
-      audioEl.onended = done;
-      audioEl.onerror = done;
-      audioEl.play().catch(() => done());
-    });
   }
 
   async function start() {
@@ -235,31 +184,82 @@ function createCallMachine({ setState, setError, setRemainingMs, setMuted }: Set
     }
     setState("connecting");
     try {
-      // Reset the per-call budget and grab the mic in parallel (less latency).
       const sessionId = useChatStore.getState().ensureSessionId();
-      const [, micStream] = await Promise.all([
-        startVoiceCall(sessionId),
-        navigator.mediaDevices.getUserMedia({ audio: true }),
-      ]);
-      stream = micStream;
-      const AC =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext })
-          .webkitAudioContext;
-      audioCtx = new AC();
-      await audioCtx.resume().catch(() => {});
-      const src = audioCtx.createMediaStreamSource(stream);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
-      src.connect(analyser);
+      const token = useAuthStore.getState().token;
+
+      // Echo cancellation matters here: the mic stays open while the
+      // assistant's own voice plays through the speakers.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const socket = new WebSocket(voiceCallWsUrl());
+        socket.binaryType = "arraybuffer";
+        ws = socket;
+        let resolvedReady = false;
+
+        socket.addEventListener("open", () => {
+          socket.send(JSON.stringify({ type: "auth", session_id: sessionId, token }));
+        });
+
+        socket.onmessage = (ev) => {
+          if (typeof ev.data !== "string") {
+            if (resolvedReady) {
+              player?.enqueue(ev.data as ArrayBuffer);
+              if (active) setState("speaking");
+            }
+            return;
+          }
+          let msg: Record<string, unknown>;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            return;
+          }
+          if (!resolvedReady) {
+            if (msg.type === "ready") {
+              resolvedReady = true;
+              player = new StreamingAudioPlayer(Number(msg.audio_sample_rate) || 22050);
+              resolve();
+            } else if (msg.type === "call_ended") {
+              reject(new Error(String(msg.reason ?? "connect_failed")));
+            }
+            return;
+          }
+          handleControl(msg);
+        };
+        socket.onerror = () => {
+          if (!resolvedReady) reject(new Error("ws_error"));
+        };
+        socket.onclose = () => {
+          if (!resolvedReady) {
+            reject(new Error("ws_closed"));
+          } else if (active) {
+            active = false;
+            cleanup();
+            setRemainingMs(null);
+            setError(endReasonMessage("connection_lost"));
+            setState("ended");
+          }
+        };
+      });
+
+      await player!.resume();
+      const capture = await startMicCapture(stream, (chunk) => {
+        if (!muted && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(chunk);
+        }
+      });
+      micStop = capture.stop;
+
       active = true;
       muted = false;
       setMuted(false);
       startedAt = Date.now();
-      // SliceMatic greets first (hardcoded → instant), then starts listening.
-      setState("speaking");
-      await playTts(CALL_GREETING);
-      if (active) beginListening();
+      setRemainingMs(CAP_MS);
+      startCapTimer();
+      setState("listening");
     } catch {
       cleanup();
       setState("denied");
@@ -271,35 +271,28 @@ function createCallMachine({ setState, setError, setRemainingMs, setMuted }: Set
     if (!active) return;
     muted = !muted;
     setMuted(muted);
-    if (muted) {
-      cancelAnimationFrame(raf);
-      if (recorder && recorder.state !== "inactive") {
-        recorder.onstop = null;
-        try {
-          recorder.stop();
-        } catch {
-          /* ignore */
-        }
-      }
-      setState("listening");
-    } else {
-      beginListening();
+    try {
+      ws?.send(JSON.stringify({ type: muted ? "mute" : "unmute" }));
+    } catch {
+      /* ignore */
     }
   }
 
   return { start, end: () => endCall("user"), toggleMute };
 }
 
-export function useVoiceCall() {
+function useRealtimeVoiceCall() {
   const [state, setState] = useState<VoiceState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const [muted, setMuted] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const machineRef = useRef<ReturnType<typeof createCallMachine> | null>(null);
+  const machineRef = useRef<ReturnType<typeof createRealtimeCallMachine> | null>(
+    null
+  );
   if (machineRef.current === null && typeof window !== "undefined") {
-    machineRef.current = createCallMachine({
+    machineRef.current = createRealtimeCallMachine({
       setState,
       setError,
       setRemainingMs,
@@ -327,3 +320,9 @@ export function useVoiceCall() {
     toggleMute: () => machineRef.current?.toggleMute(),
   };
 }
+
+// NEXT_PUBLIC_* env vars are inlined at build time — this is a fixed choice
+// for the whole app's lifetime, not a per-render conditional, so aliasing
+// useVoiceCall to one hook or the other here never violates rules-of-hooks.
+export const useVoiceCall =
+  process.env.NEXT_PUBLIC_VOICE_MODE === "rest" ? useRestVoiceCall : useRealtimeVoiceCall;

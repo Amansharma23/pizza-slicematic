@@ -62,12 +62,20 @@ def _stage_instruction(session) -> str:
     if stage == "payment":
         if voice:
             return (
-                "The bill is computed. Tell the customer only the total amount and "
-                "ask how they'd like to pay: cash, card, or UPI. The moment they "
-                "answer, call confirm_and_save_order with the SAME items and that "
-                "payment mode (Cash, Card, or UPI) — do not ask them to confirm "
-                "again. If they change the order instead, rebuild the lines and "
-                "call calculate_order_price again."
+                "Tell the customer the total amount and ask how they'd like to pay: "
+                "cash, card, or UPI. If they say UPI: reply with a short natural "
+                "sentence telling them to check their screen, followed by exactly "
+                "[UPI_QR] (e.g. \"Sure! You'll see a QR code on your screen — please "
+                'scan it to pay. [UPI_QR]"). If they say Card: same idea, but end '
+                "with exactly [CARD_FORM] instead. The chat screen (visible during "
+                "this call) renders that tag as the real payment form — never "
+                "describe it any other way. If they say Cash or COD: no tag needed, "
+                "call confirm_and_save_order right away with payment mode Cash. For "
+                "UPI/Card, WAIT until they say they've paid (e.g. 'I have paid', "
+                "'done') before calling confirm_and_save_order with the SAME items "
+                "and that payment mode — do not ask them to confirm again. If they "
+                "change the order instead, rebuild the lines and call "
+                "calculate_order_price again."
             )
         return (
             "The bill and payment buttons are already on screen — do not repeat "
@@ -130,6 +138,34 @@ You: [UPI_QR]
 """
 
 
+def _voice_examples_block() -> str:
+    """Few-shot spoken/Hinglish examples built from the LIVE menu (never
+    hardcode names) — the voice sibling of _examples_block(). Mostly natural
+    spoken phrasing instead of UI tags (which would otherwise leak into TTS as
+    literal spoken text, e.g. the model saying "bracket tiles colon") — except
+    [UPI_QR]/[CARD_FORM], which the voice call layer (ai/voice_call.py) strips
+    before TTS but forwards intact to the chat thread so the real payment UI
+    still renders on screen during the call."""
+    names = tools.menu_names()
+    if not (names["pizzas"] and names["bases"] and names["toppings"]):
+        return ""
+    pizza2 = names["pizzas"][1] if len(names["pizzas"]) > 1 else names["pizzas"][0]
+    return f"""
+EXAMPLES — match this natural, spoken style exactly:
+Customer: kya milega?
+You: Hamare paas {names["pizzas"][0]} aur {pizza2} hain — kaunsa pasand karenge?
+
+Customer: {names["pizzas"][0]}
+You: Great choice! Base kaunsa chahiye — {names["bases"][0]} ya koi aur?
+
+Customer: total kitna hoga?
+You: Aapka total 1,249 rupees hoga — cash, card, ya UPI se pay karenge?
+
+Customer: UPI se karunga
+You: Sure! Aapko screen par ek QR code dikhega — usse scan karke pay kar dijiye. [UPI_QR]
+"""
+
+
 def build_system_prompt(session, menu_text: str) -> str:
     s = get_settings()
     lang = "Hindi" if session.language == "hi" else "English"
@@ -138,10 +174,20 @@ def build_system_prompt(session, menu_text: str) -> str:
     style = (
         "You are on a live phone call: speak naturally in 1-2 short sentences — "
         "no markdown, tags, symbols, or lists. Never read the whole menu aloud; "
-        "offer 2-3 options instead."
+        "offer 2-3 options instead. Always write numbers with comma separators "
+        "for correct pronunciation (e.g. 1,500 not 1500)."
         if voice
         else "Keep replies to 1-3 short, warm sentences plus any output tags. An "
         "occasional tasteful emoji is fine."
+    )
+
+    lang_rule = (
+        "Speak naturally the way Delhi customers actually talk on the phone — "
+        "freely code-switch between Hindi and English within the same sentence "
+        "(natural Hinglish) rather than forcing pure Hindi or pure English. "
+        "Mirror the customer's own mix."
+        if voice
+        else f"Respond ONLY in {lang}."
     )
 
     tags = (
@@ -155,10 +201,10 @@ OUTPUT TAGS — the chat UI renders these as buttons and forms. Copy each format
 - After calculate_order_price succeeds, the system shows the bill and payment buttons by itself — NEVER write [BILL] or [PAYMENT_OPTIONS] yourself, and never restate the bill's numbers.
 """
     )
-    examples = "" if voice else _examples_block()
+    examples = _voice_examples_block() if voice else _examples_block()
 
     return f"""You are the order assistant at {s.brand}, a neighbourhood pizza place in \
-New Ashok Nagar, Delhi — warm, friendly, efficient. Respond ONLY in {lang}. Ask ONE \
+New Ashok Nagar, Delhi — warm, friendly, efficient. {lang_rule} Ask ONE \
 question at a time. {style}
 
 HARD RULES — never break these:

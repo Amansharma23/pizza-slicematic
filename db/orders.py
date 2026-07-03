@@ -72,6 +72,7 @@ def create_order(
     language: str | None = None,
     status: str = "received",
     delivery_address: str | None = None,
+    type: str = "online",
 ) -> str:
     """Create ONE order row for an API/frontend cart (DB is the source of truth
     for these — they are NOT written to orders_log.txt).
@@ -100,6 +101,7 @@ def create_order(
         "language": language,
         "status": status,
         "delivery_address": delivery_address,
+        "type": type,
     }
     resp = execute_query(client.table("orders").insert(row))
     data = getattr(resp, "data", None)
@@ -108,22 +110,27 @@ def create_order(
     return data[0].get("order_no")
 
 
-def list_orders_by_user(user_id: str, limit: int = 50) -> list[dict]:
+def list_orders_by_user(
+    user_id: str, limit: int = 50, type: str | None = None, status: str | None = None
+) -> list[dict]:
     """Return a user's orders, newest first. Empty list if the DB is absent."""
     client = get_client()
     if client is None:
         return []
-    resp = execute_query(
-        client.table("orders")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(limit)
-    )
+
+    query = client.table("orders").select("*").eq("user_id", user_id)
+    if type:
+        query = query.eq("type", type)
+    if status:
+        query = query.eq("status", status)
+
+    resp = execute_query(query.order("created_at", desc=True).limit(limit))
     return getattr(resp, "data", None) or []
 
 
-def list_recent_orders(limit: int = 100) -> list[dict]:
+def list_recent_orders(
+    limit: int = 100, type: str | None = None, status: str | None = None
+) -> list[dict]:
     """ALL recent orders, newest first — the delivery rider's work queue.
 
     Interim: every rider sees every order (per-rider assignment is a future
@@ -131,23 +138,31 @@ def list_recent_orders(limit: int = 100) -> list[dict]:
     client = get_client()
     if client is None:
         raise RuntimeError("Order database is not configured.")
-    resp = execute_query(
-        client.table("orders").select("*").order("created_at", desc=True).limit(limit)
-    )
+
+    query = client.table("orders").select("*")
+    if type:
+        query = query.eq("type", type)
+    if status:
+        query = query.eq("status", status)
+
+    resp = execute_query(query.order("created_at", desc=True).limit(limit))
     return getattr(resp, "data", None) or []
 
 
-def list_orders_by_phone(phone: str, limit: int = 50) -> list[dict]:
+def list_orders_by_phone(
+    phone: str, limit: int = 50, type: str | None = None, status: str | None = None
+) -> list[dict]:
     """Return orders for a phone number, newest first (interim user filter until
     real auth lands and everything keys on user_id). Empty if the DB is absent."""
     client = get_client()
     if client is None:
         return []
-    resp = execute_query(
-        client.table("orders")
-        .select("*")
-        .eq("customer_phone", phone)
-        .order("created_at", desc=True)
-        .limit(limit)
-    )
+
+    query = client.table("orders").select("*").eq("customer_phone", phone)
+    if type:
+        query = query.eq("type", type)
+    if status:
+        query = query.eq("status", status)
+
+    resp = execute_query(query.order("created_at", desc=True).limit(limit))
     return getattr(resp, "data", None) or []
