@@ -178,6 +178,16 @@ class CallSession:
                             }
                         )
                         self._sent_ready = True
+                        # If this is a fresh voice call (no user messages in history yet), speak greeting first.
+                        has_user_msgs = any(
+                            m.get("role") == "user" for m in self.session.history
+                        )
+                        if not has_user_msgs:
+                            greeting_text = "Namaste! Welcome to SliceMatic. आज आप कौन सा पिज़्ज़ा ऑर्डर करना चाहेंगे?"
+                            self.turn_id += 1
+                            self.turn_task = asyncio.create_task(
+                                self._speak_greeting(self.turn_id, greeting_text)
+                            )
                     await self._consume_stt_events(stt)
                     return  # call ending for some other reason; clean exit
             except asyncio.CancelledError:
@@ -214,6 +224,33 @@ class CallSession:
                 self.turn_id += 1
                 self.turn_task = asyncio.create_task(self._run_turn(self.turn_id, text))
             # "error" events are already logged inside sarvam_stream.
+
+    async def _speak_greeting(self, turn_id: int, text: str) -> None:
+        self.session.add("assistant", text)
+        await self._send_json(
+            {
+                "type": "assistant_text",
+                "text": text,
+                "blocked": False,
+                "escalated": False,
+            }
+        )
+        self._spawn_persist("Call Started", text)
+        try:
+            tts, close_tts = await sarvam_stream.open_tts_session("hi-IN")
+            try:
+                async for chunk in tts.speak(text):
+                    if turn_id != self.turn_id:
+                        return
+                    if chunk.kind == "audio":
+                        await self._send_bytes(chunk.audio)
+                    else:
+                        await self._send_json({"type": "assistant_audio_end"})
+            finally:
+                await close_tts()
+        except Exception:
+            log.exception("voice greeting failed")
+            await self._send_json({"type": "tts_failed"})
 
     # ------------------------------------------------------------------ #
     # one assistant turn

@@ -27,8 +27,8 @@ from ai.config import get_settings
 
 log = logging.getLogger(__name__)
 
-# Matches the rate ai/sarvam.py's batch TTS already uses (bulbul default).
-AUDIO_SAMPLE_RATE = 22050
+# bulbul:v3 native sample rate is 24kHz. Setting this prevents sample rate mismatch.
+AUDIO_SAMPLE_RATE = 24000
 MIC_SAMPLE_RATE = 16000
 
 
@@ -74,18 +74,34 @@ class SttSession:
                 elif signal == "END_SPEECH":
                     yield SttEvent(kind="vad_end")
             elif message.type == "data":
-                yield SttEvent(
-                    kind="transcript",
-                    text=message.data.transcript,
-                    language_code=message.data.language_code,
-                )
+                # Check for finality. Only yield when transcription is final (is_final is True)
+                # to prevent launching new LLM turns on partial/interim transcripts.
+                data = message.data
+                is_final = True
+                if hasattr(data, "model_extra") and data.model_extra:
+                    is_final = data.model_extra.get("is_final", True)
+                elif hasattr(data, "__dict__"):
+                    is_final = data.__dict__.get("is_final", True)
+
+                if is_final is True:
+                    if hasattr(message, "model_extra") and message.model_extra:
+                        is_final = message.model_extra.get("is_final", True)
+                    elif hasattr(message, "__dict__"):
+                        is_final = message.__dict__.get("is_final", True)
+
+                if is_final:
+                    yield SttEvent(
+                        kind="transcript",
+                        text=data.transcript,
+                        language_code=data.language_code,
+                    )
             elif message.type == "error":
                 log.warning("Sarvam STT error: %s", message.data)
                 yield SttEvent(kind="error")
 
 
 @asynccontextmanager
-async def stt_session(language_code: str = "unknown"):
+async def stt_session(language_code: str = "hi-IN"):
     # high_vad_sensitivity alone already fires fast — live calibration showed
     # END_SPEECH triggering on ordinary mid-sentence pauses, before any
     # trailing silence even started. Tightening the fine-grained frame-count
@@ -159,6 +175,7 @@ async def open_tts_session(
         speaker=speaker or s.sarvam_v3_speaker,
         output_audio_codec="linear16",
         speech_sample_rate=AUDIO_SAMPLE_RATE,
+        pace=1.2,  # Speed up pacing to sound natural and conversational
     )
     return TtsSession(ws), stack.aclose
 
