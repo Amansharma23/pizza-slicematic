@@ -4,31 +4,124 @@ import {
   Check,
   ChevronRight,
   LogOut,
-  Mail,
   MapPin,
+  Pencil,
   Phone,
+  Plus,
   RotateCcw,
-  Star,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { useTheme } from "@/components/theme-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getMe, saveAddresses, type SavedAddress } from "@/lib/api";
+import { initials, memberSince, useAuthStore } from "@/lib/auth-store";
 import { useChatStore } from "@/lib/store";
 import { THEMES } from "@/lib/themes";
-import { CURRENT_USER as u } from "@/lib/user";
 import { cn } from "@/lib/utils";
 
 export default function ProfilePage() {
   const { theme, setTheme } = useTheme();
+  const { token, user, setUser, signOut } = useAuthStore();
   const resetChat = useChatStore((s) => s.reset);
   const router = useRouter();
+
+  const [addrError, setAddrError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // null = closed, "" = adding new, otherwise the id being edited
+  const [editing, setEditing] = useState<string | null>(null);
+  const [label, setLabel] = useState("Home");
+  const [line, setLine] = useState("");
+
+  // Refresh from the user table on mount so the profile always shows current
+  // server state (not just what was cached at sign-in).
+  useEffect(() => {
+    if (!token) return;
+    getMe(token)
+      .then((res) => {
+        if (res.ok && res.user) setUser(res.user);
+      })
+      .catch(() => {}); // keep the cached copy on network hiccups
+  }, [token, setUser]);
+
+  if (!user) return null; // gate guarantees a user; satisfy the type checker
+
+  const addresses = user.address ?? [];
 
   const startNewOrder = () => {
     resetChat();
     router.push("/");
+  };
+
+  const openEditor = (a?: SavedAddress) => {
+    setEditing(a ? a.id : "");
+    setLabel(a?.label ?? (addresses.length === 0 ? "Home" : "Work"));
+    setLine(a?.line ?? "");
+    setAddrError(null);
+  };
+
+  const persist = async (next: SavedAddress[]) => {
+    if (!token) return;
+    setSaving(true);
+    setAddrError(null);
+    try {
+      // First address (or the edited default) becomes the default.
+      if (next.length > 0 && !next.some((a) => a.isDefault)) {
+        next = next.map((a, i) => ({ ...a, isDefault: i === 0 }));
+      }
+      const res = await saveAddresses(token, next);
+      if (res.ok && res.user) {
+        setUser(res.user);
+        setEditing(null);
+      } else {
+        const first = res.errors ? Object.values(res.errors)[0] : null;
+        setAddrError(first ?? "Couldn't save the address. Try again.");
+      }
+    } catch (err) {
+      setAddrError(
+        err instanceof Error ? err.message : "Couldn't save the address."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveEditor = () => {
+    const cleanLine = line.trim();
+    if (!cleanLine) {
+      setAddrError("Address can't be empty.");
+      return;
+    }
+    const cleanLabel = label.trim() || "Home";
+    if (editing === "") {
+      void persist([
+        ...addresses,
+        {
+          id: `addr-${Date.now()}`,
+          label: cleanLabel,
+          line: cleanLine,
+          isDefault: addresses.length === 0,
+        },
+      ]);
+    } else {
+      void persist(
+        addresses.map((a) =>
+          a.id === editing ? { ...a, label: cleanLabel, line: cleanLine } : a
+        )
+      );
+    }
+  };
+
+  const removeAddress = (id: string) => {
+    void persist(addresses.filter((a) => a.id !== id));
+  };
+
+  const makeDefault = (id: string) => {
+    void persist(addresses.map((a) => ({ ...a, isDefault: a.id === id })));
   };
 
   return (
@@ -37,40 +130,29 @@ export default function ProfilePage() {
         {/* Identity */}
         <Card className="flex items-center gap-4 p-5">
           <span className="grid size-16 shrink-0 place-items-center rounded-full bg-primary text-xl font-bold text-primary-foreground">
-            {u.initials}
+            {initials(user.name)}
           </span>
           <div className="min-w-0">
-            <h1 className="font-heading text-xl font-bold">{u.name}</h1>
+            <h1 className="font-heading text-xl font-bold">{user.name}</h1>
             <p className="text-sm text-muted-foreground">
-              Member since {u.memberSince}
+              Member since {memberSince(user.created_at)}
             </p>
           </div>
         </Card>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-4">
-            <p className="text-2xl font-bold tabular-nums">{u.stats.orders}</p>
-            <p className="text-sm text-muted-foreground">Total orders</p>
-          </Card>
-          <Card className="p-4">
-            <p className="flex items-center gap-1.5 truncate text-lg font-semibold">
-              <Star className="size-4 shrink-0 text-secondary" />
-              {u.stats.favourite}
-            </p>
-            <p className="text-sm text-muted-foreground">Favourite</p>
-          </Card>
-        </div>
-
         {/* Contact */}
         <Section title="Account">
-          <Row icon={Phone} label="Phone" value={u.phone} />
-          <Row icon={Mail} label="Email" value={u.email} />
+          <Row icon={Phone} label="Phone" value={user.phone ?? "—"} />
         </Section>
 
-        {/* Addresses */}
+        {/* Addresses — needed before a delivery order can be placed */}
         <Section title="Saved addresses">
-          {u.addresses.map((a) => (
+          {addresses.length === 0 && editing === null && (
+            <p className="px-4 py-3 text-sm text-muted-foreground">
+              No address yet — add one so we can deliver to you.
+            </p>
+          )}
+          {addresses.map((a) => (
             <div key={a.id} className="flex items-start gap-3 px-4 py-3">
               <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
@@ -79,9 +161,101 @@ export default function ProfilePage() {
                   {a.isDefault && <Badge variant="primary">Default</Badge>}
                 </p>
                 <p className="text-sm text-muted-foreground">{a.line}</p>
+                {!a.isDefault && (
+                  <button
+                    type="button"
+                    onClick={() => makeDefault(a.id)}
+                    disabled={saving}
+                    className="mt-1 cursor-pointer text-xs font-medium text-primary hover:underline"
+                  >
+                    Make default
+                  </button>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  aria-label={`Edit ${a.label}`}
+                  onClick={() => openEditor(a)}
+                  className="grid size-8 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
+                >
+                  <Pencil className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Delete ${a.label}`}
+                  onClick={() => removeAddress(a.id)}
+                  disabled={saving}
+                  className="grid size-8 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-surface-2 hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
               </div>
             </div>
           ))}
+
+          {editing !== null ? (
+            <div className="space-y-2.5 border-t border-border bg-surface-2 px-4 py-3">
+              <div>
+                <label
+                  htmlFor="addr-label"
+                  className="mb-1 block text-xs text-muted-foreground"
+                >
+                  Label
+                </label>
+                <input
+                  id="addr-label"
+                  className="h-10 w-full rounded-lg border border-input bg-card px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="Home, Work…"
+                  maxLength={20}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="addr-line"
+                  className="mb-1 block text-xs text-muted-foreground"
+                >
+                  Full address
+                </label>
+                <textarea
+                  id="addr-line"
+                  className="min-h-20 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={line}
+                  onChange={(e) => setLine(e.target.value)}
+                  placeholder="House / flat, street, area, city, PIN code"
+                />
+              </div>
+              {addrError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {addrError}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={saveEditor} disabled={saving}>
+                  {saving ? "Saving…" : "Save address"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditing(null)}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openEditor()}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left text-sm font-medium text-primary transition-colors hover:bg-surface-2"
+            >
+              <Plus className="size-4" />
+              Add {addresses.length > 0 ? "another" : "an"} address
+            </button>
+          )}
         </Section>
 
         {/* Appearance — configurable palette lives here (settings-style) */}
@@ -140,15 +314,14 @@ export default function ProfilePage() {
           <Button
             variant="outline"
             className="w-full text-destructive"
-            disabled
-            title="Auth is a future milestone"
+            onClick={() => {
+              signOut();
+              router.push("/");
+            }}
           >
             <LogOut />
             Sign out
           </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            Demo profile — sign-in arrives with auth.
-          </p>
         </div>
       </div>
     </div>

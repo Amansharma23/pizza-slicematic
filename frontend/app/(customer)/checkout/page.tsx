@@ -19,8 +19,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { checkoutCart } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 import { toPayload, useMenuStore } from "@/lib/menu-store";
-import { CURRENT_USER } from "@/lib/user";
 import { cn, formatINR } from "@/lib/utils";
 
 const METHODS = [
@@ -50,12 +50,13 @@ const METHODS = [
 export default function CheckoutPage() {
   const router = useRouter();
   const { cart, totals, reprice, clearCart } = useMenuStore();
+  const user = useAuthStore((s) => s.user);
+  const addresses = useMemo(() => user?.address ?? [], [user]);
 
-  const [name, setName] = useState(CURRENT_USER.name);
-  const [phone, setPhone] = useState(CURRENT_USER.phone);
+  const [name, setName] = useState(user?.name ?? "");
+  const [phone, setPhone] = useState(user?.phone ?? "");
   const [addressId, setAddressId] = useState(
-    CURRENT_USER.addresses.find((a) => a.isDefault)?.id ??
-      CURRENT_USER.addresses[0]?.id
+    addresses.find((a) => a.isDefault)?.id ?? addresses[0]?.id
   );
   const [methodId, setMethodId] = useState<(typeof METHODS)[number]["id"]>("cod");
   const [editingContact, setEditingContact] = useState(false);
@@ -72,13 +73,21 @@ export default function CheckoutPage() {
   const showContactEditor = editingContact || !nameOk || !phoneOk;
   const method = METHODS.find((m) => m.id === methodId)!;
   const address = useMemo(
-    () => CURRENT_USER.addresses.find((a) => a.id === addressId),
-    [addressId]
+    () => addresses.find((a) => a.id === addressId),
+    [addresses, addressId]
   );
-  const canPlace = nameOk && phoneOk && cart.length > 0 && !processing;
+  // "Cash at Store" is pickup — no address needed. Delivery (COD/UPI) requires
+  // a saved address BEFORE the order can be placed (see auth requirements).
+  const needsAddress = method.id !== "cash";
+  const canPlace =
+    nameOk &&
+    phoneOk &&
+    cart.length > 0 &&
+    !processing &&
+    (!needsAddress || !!address);
 
   const place = async () => {
-    if (!canPlace || !address) return;
+    if (!canPlace) return;
     setError(null);
     setProcessing(true);
 
@@ -89,10 +98,11 @@ export default function CheckoutPage() {
 
     try {
       const res = await checkoutCart({
-        user_id: CURRENT_USER.id,
+        user_id: user?.id ?? "",
         name: name.trim(),
         phone: phone.trim(),
         payment_mode: method.mode,
+        address: needsAddress && address ? `${address.label}: ${address.line}` : "",
         lines: cart.map(toPayload),
       });
       if (!res.ok || !res.order_no) {
@@ -220,9 +230,32 @@ export default function CheckoutPage() {
 
           {/* Address */}
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Deliver to</h2>
+            <h2 className="text-sm font-semibold">
+              {needsAddress ? "Deliver to" : "Pickup"}
+            </h2>
+            {!needsAddress ? (
+              <div className="rounded-xl border border-border bg-surface-2 p-3.5 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  SliceMatic, New Ashok Nagar
+                </span>{" "}
+                — pay at the counter and collect your order.
+              </div>
+            ) : addresses.length === 0 ? (
+              <div
+                role="alert"
+                className="space-y-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3.5"
+              >
+                <p className="text-sm text-destructive">
+                  No delivery address saved — add one to your profile before
+                  placing a delivery order.
+                </p>
+                <Button asChild size="sm" variant="secondary">
+                  <Link href="/profile">Add an address</Link>
+                </Button>
+              </div>
+            ) : (
             <div className="space-y-2">
-              {CURRENT_USER.addresses.map((a) => (
+              {addresses.map((a) => (
                 <button
                   key={a.id}
                   type="button"
@@ -247,6 +280,7 @@ export default function CheckoutPage() {
                 </button>
               ))}
             </div>
+            )}
           </section>
 
           {/* Payment */}

@@ -39,6 +39,15 @@ CUSTOM_MENU_MODE = "Upload my own menu files"
 
 router = APIRouter(prefix="/api")
 
+# Additive auth/account routes (/api/auth/*). Guarded import so the graded
+# Gradio path still boots even if the auth extras (bcrypt/jwt/DB) are absent.
+try:
+    from api.auth import router as auth_router
+
+    router.include_router(auth_router)
+except Exception:  # pragma: no cover - only without optional deps
+    pass
+
 
 # --------------------------------------------------------------------------- #
 # Helpers
@@ -218,6 +227,10 @@ class CheckoutReq(BaseModel):
     name: str = ""
     phone: str = ""
     payment_mode: str = ""
+    # Delivery address chosen at checkout (shown on the rider's screen). The
+    # frontend requires it for delivery orders; server-side enforcement lands
+    # with the authorization step (address then comes from the authed profile).
+    address: str = ""
     lines: list[CartLineReq] = []
 
 
@@ -410,6 +423,7 @@ def checkout_cart(req: CheckoutReq):
             total=totals["total"],
             payment_mode=mode,
             source="api",
+            delivery_address=req.address.strip() or None,
         )
     except Exception as exc:  # DB is source of truth — surface the failure
         return {"ok": False, "errors": {"db": f"Could not save the order: {exc}"}}
@@ -422,6 +436,20 @@ def checkout_cart(req: CheckoutReq):
         "payment_mode": mode,
         "line_count": len(items),
     }
+
+
+@router.get("/orders/recent")
+def list_recent_orders():
+    """ALL recent orders (newest first) — the delivery rider's work queue.
+
+    Interim scope: every rider sees every order, per the current requirement;
+    per-rider assignment + role enforcement arrive with the authorization step."""
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+    try:
+        return {"ok": True, "orders": db_orders.list_recent_orders()}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
 
 
 @router.get("/orders")

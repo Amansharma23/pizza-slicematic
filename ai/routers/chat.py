@@ -13,12 +13,13 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Header
 from pydantic import BaseModel
 
 from ai import agent, guardrails
 from ai import session as sess
 from ai.language import detect
+from ai.profile import attach_user
 from db import messages as db_messages
 
 log = logging.getLogger(__name__)
@@ -51,11 +52,17 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, background: BackgroundTasks) -> ChatResponse:
+def chat(
+    req: ChatRequest,
+    background: BackgroundTasks,
+    authorization: str | None = Header(default=None),
+) -> ChatResponse:
     session_id = req.session_id or uuid.uuid4().hex
     session = sess.get_or_create(session_id, channel="chat")
     session.channel = "chat"
     session.language = detect(req.message)
+    # Signed-in customer (JWT) → real profile for get_customer_profile.
+    attach_user(session, authorization)
 
     with sess.lock_for(session_id):
         check = guardrails.check_input(req.message)

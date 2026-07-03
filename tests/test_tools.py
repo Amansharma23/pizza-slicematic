@@ -150,10 +150,11 @@ def test_confirm_saves_and_returns_order_no(ids, no_writes):
     payload = json.loads(out)  # success returns JSON for deterministic injection
     assert payload["ok"] is True and payload["order_no"] == "SM-20260703-0001"
     assert s.confirmed is True and s.status == "ordered"
-    # DB-only: one order row, stamped with the profile user + source/session
+    # DB-only: one order row, stamped with source/session (anonymous session
+    # here, so user_id is None — attach_user stamps it for signed-in customers)
     assert len(no_writes["create"]) == 1
     row = no_writes["create"][0]
-    assert row["user_id"] == tools.CUSTOMER_PROFILE["user_id"]
+    assert row["user_id"] is None
     assert row["source"] == "chat"
     assert row["session_id"] == "cf1"
     assert row["phone"] == "9811122233"  # orders are listed by phone for now
@@ -218,19 +219,31 @@ def test_confirm_surfaces_db_failure(ids, monkeypatch):
     assert s.confirmed is False  # the gate stays open for a retry
 
 
-def test_get_customer_profile_sets_session():
-    s = Session(id="pf1")
+def _signed_in(session: Session) -> Session:
+    """Simulate ai/profile.attach_user resolving a JWT onto the session."""
+    session.user_id = "uid-123"
+    session.name = "Aarav Sharma"
+    session.phone = "9876543210"
+    session.address = "D-42, New Ashok Nagar, New Delhi 110096 (Home)"
+    return session
+
+
+def test_get_customer_profile_reads_session_user():
+    s = _signed_in(Session(id="pf1"))
     out = tools.execute_tool("get_customer_profile", {}, s)
-    assert tools.CUSTOMER_PROFILE["name"] in out
-    assert s.name == tools.CUSTOMER_PROFILE["name"]
-    assert s.phone == tools.CUSTOMER_PROFILE["phone"]
+    assert s.name in out and s.phone in out and s.address in out
+
+
+def test_get_customer_profile_anonymous_session():
+    out = tools.execute_tool("get_customer_profile", {}, Session(id="pf1b"))
+    assert "No signed-in profile" in out
 
 
 def test_confirm_falls_back_to_session_profile(ids, no_writes):
-    """confirm without name/phone args uses the profile primed on the session."""
+    """confirm without name/phone args uses the profile attached to the session,
+    and the order row is stamped with user_id + delivery address."""
     b, p, t = ids
-    s = Session(id="pf2")
-    tools.execute_tool("get_customer_profile", {}, s)
+    s = _signed_in(Session(id="pf2"))
     out = tools.execute_tool(
         "confirm_and_save_order",
         {
@@ -240,8 +253,27 @@ def test_confirm_falls_back_to_session_profile(ids, no_writes):
         s,
     )
     assert json.loads(out)["ok"] is True
-    assert no_writes["create"][0]["name"] == tools.CUSTOMER_PROFILE["name"]
-    assert no_writes["create"][0]["phone"] == tools.CUSTOMER_PROFILE["phone"]
+    row = no_writes["create"][0]
+    assert row["name"] == s.name and row["phone"] == s.phone
+    assert row["user_id"] == "uid-123"
+    assert row["delivery_address"] == s.address
+
+
+def test_confirm_requires_address_for_signed_in_user(ids, no_writes):
+    """A signed-in customer with NO saved address cannot place a chat order."""
+    b, p, t = ids
+    s = _signed_in(Session(id="pf3"))
+    s.address = None
+    out = tools.execute_tool(
+        "confirm_and_save_order",
+        {
+            "payment_mode": "UPI",
+            "items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}],
+        },
+        s,
+    )
+    assert "Cannot place the order" in out and "address" in out.lower()
+    assert no_writes["create"] == []  # nothing saved
 
 
 def test_tools_for_gates_save_on_pricing(ids):

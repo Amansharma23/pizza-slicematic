@@ -32,8 +32,10 @@ class Session:
     language: str = "en"  # "en" | "hi"
     status: str = "active"  # active | ordered | escalated | abandoned
     history: list[dict] = field(default_factory=list)  # OpenAI-shaped messages
+    user_id: str | None = None  # app_users.id of the signed-in customer (JWT)
     name: str | None = None
     phone: str | None = None
+    address: str | None = None  # default delivery address line from app_users
     items: list = field(default_factory=list)
     pricing: dict | None = None  # set after calculate_order_price
     confirmed: bool = False
