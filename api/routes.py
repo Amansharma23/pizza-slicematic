@@ -231,6 +231,7 @@ class CheckoutReq(BaseModel):
     # frontend requires it for delivery orders; server-side enforcement lands
     # with the authorization step (address then comes from the authed profile).
     address: str = ""
+    type: str = "online"
     lines: list[CartLineReq] = []
 
 
@@ -424,6 +425,7 @@ def checkout_cart(req: CheckoutReq):
             payment_mode=mode,
             source="api",
             delivery_address=req.address.strip() or None,
+            type=req.type,
         )
     except Exception as exc:  # DB is source of truth — surface the failure
         return {"ok": False, "errors": {"db": f"Could not save the order: {exc}"}}
@@ -439,7 +441,7 @@ def checkout_cart(req: CheckoutReq):
 
 
 @router.get("/orders/recent")
-def list_recent_orders():
+def list_recent_orders(type: str = "", status: str = ""):
     """ALL recent orders (newest first) — the delivery rider's work queue.
 
     Interim scope: every rider sees every order, per the current requirement;
@@ -447,13 +449,18 @@ def list_recent_orders():
     if db_orders is None:
         return {"ok": False, "errors": {"db": "Order database is unavailable."}}
     try:
-        return {"ok": True, "orders": db_orders.list_recent_orders()}
+        return {
+            "ok": True,
+            "orders": db_orders.list_recent_orders(
+                type=type or None, status=status or None
+            ),
+        }
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
 
 
 @router.get("/orders")
-def list_orders(user_id: str = "", phone: str = ""):
+def list_orders(user_id: str = "", phone: str = "", type: str = "", status: str = ""):
     """List a user's orders (newest first) from the DB — the API source of truth.
 
     Filter by phone (interim, until real auth) or user_id; phone wins if both
@@ -464,9 +471,13 @@ def list_orders(user_id: str = "", phone: str = ""):
         return {"ok": False, "errors": {"db": "Order database is unavailable."}}
     try:
         if phone:
-            orders = db_orders.list_orders_by_phone(phone)
+            orders = db_orders.list_orders_by_phone(
+                phone, type=type or None, status=status or None
+            )
         else:
-            orders = db_orders.list_orders_by_user(user_id)
+            orders = db_orders.list_orders_by_user(
+                user_id, type=type or None, status=status or None
+            )
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
     return {"ok": True, "orders": orders}

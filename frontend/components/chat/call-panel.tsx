@@ -65,6 +65,11 @@ export function CallPanel({
 
       <div className="text-center">
         <p className="text-sm font-medium text-foreground">{label}</p>
+        {state === "speaking" && (
+          <p className="text-xs text-muted-foreground">
+            Tap to interrupt — just start talking
+          </p>
+        )}
         {remainingMs != null && (
           <p className="text-xs text-muted-foreground tabular-nums">
             {fmt(remainingMs)} left
