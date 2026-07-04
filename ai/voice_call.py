@@ -18,6 +18,7 @@ import time
 
 from ai import agent, guardrails, sarvam_stream
 from ai import session as sess
+from ai import voice_fillers
 from ai.language import detect
 from ai.profile import attach_user
 from ai.routers.chat import _persist_turn
@@ -255,6 +256,34 @@ class CallSession:
     # ------------------------------------------------------------------ #
     # one assistant turn
     # ------------------------------------------------------------------ #
+    async def _maybe_send_filler(
+        self, turn_id: int, lang: str, llm_done: asyncio.Event
+    ) -> None:
+        """Speak a short "umm..."/"hmm..." pause-word immediately, the moment
+        the turn starts — not gated behind a delay. It's a bare interjection
+        (see ai/voice_fillers.py for why), short enough that timing it against
+        the LLM isn't worth the complexity: if the LLM is fast, the filler
+        just finishes and the real reply follows right after, same as a human
+        saying "umm" reflexively even before an easy question. `llm_done` is
+        still checked before every chunk so a genuinely instant reply cuts the
+        filler short rather than talking over it.
+        """
+        if turn_id != self.turn_id or llm_done.is_set():
+            return
+
+        try:
+            chunks = await voice_fillers.get_filler_audio(lang)
+        except Exception:
+            log.warning("filler audio unavailable", exc_info=True)
+            return
+
+        for chunk in chunks:
+            if turn_id != self.turn_id or llm_done.is_set():
+                return
+            await self._send_bytes(chunk)
+        # No assistant_audio_end here — that signal stays reserved for the
+        # real reply's completion, so the frontend keeps waiting for it.
+
     async def _run_turn(self, turn_id: int, transcript: str) -> None:
         await self._send_json({"type": "user_transcript", "text": transcript})
 
@@ -269,6 +298,15 @@ class CallSession:
         guessed_lang = "hi-IN" if detect(transcript) == "hi" else "en-IN"
         prewarm_task = asyncio.create_task(sarvam_stream.open_tts_session(guessed_lang))
 
+        # Concurrently: an instant "umm..."/"hmm..." filler (see
+        # _maybe_send_filler for why it's a bare interjection, fired
+        # immediately, and how llm_done keeps it safe against an instant reply).
+        llm_done = asyncio.Event()
+        filler_lang = "hi" if guessed_lang == "hi-IN" else "en"
+        filler_task = asyncio.create_task(
+            self._maybe_send_filler(turn_id, filler_lang, llm_done)
+        )
+
         t0 = time.perf_counter()
         try:
             reply, blocked = await asyncio.to_thread(
@@ -277,6 +315,9 @@ class CallSession:
         except Exception:
             log.exception("voice turn failed")
             reply, blocked = agent._apology(self.session.language), False
+        finally:
+            llm_done.set()
+        filler_task.cancel()  # no-op if it already fired or finished
         log.info("[timing] AGENT(voice-rt) %.2fs", time.perf_counter() - t0)
 
         if turn_id != self.turn_id:
