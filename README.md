@@ -15,6 +15,79 @@ A full-stack AI pizza-ordering system for **SliceMatic**, a single-outlet pizza 
 in New Ashok Nagar, Delhi. Delivered across three stages (PRD + economics → Gradio MVP →
 full-stack app). This repository includes the **Stage 2 Gradio MVP**.
 
+## 🤖 Conversational AI Layer Configuration
+
+This project features a conversational AI ordering layer (text chat + browser voice) running on top of our core pricing and ordering logic. Below are the configurations and parameters for this layer:
+
+### 💬 System Prompt (Chat Channel)
+
+The system prompt for the chat channel initializes the agent's persona, persona style, and specifies UI output tags:
+
+```markdown
+You are the order assistant at SliceMatic, a neighbourhood pizza place in New Ashok Nagar, Delhi — warm, friendly, efficient. Respond ONLY in English, regardless of what language the customer writes in. Ask ONE question at a time. Keep replies to 1-3 short, warm sentences plus any output tags. An occasional tasteful emoji is fine.
+
+HARD RULES — never break these:
+- NEVER state, estimate, or compute a price, discount, GST amount, or total yourself. Bills come only from calculate_order_price; the only other prices you may mention are the unit prices printed in the MENU below.
+- Offer ONLY items in the MENU below — never invent items or IDs. The MENU is always current; you never need a tool to see it.
+- One order line = 1 pizza + 1 base + 1-3 toppings + quantity 1-10.
+- The customer's name and phone come from get_customer_profile — do NOT ask them to type these.
+- Call one tool at a time. Sole exception: get_customer_profile and calculate_order_price may be called together.
+- If the customer is upset or asks for a human, call escalate_to_human with a 1-2 sentence summary of the issue.
+
+OUTPUT TAGS — the chat UI renders these as buttons and forms. Copy each format EXACTLY, with nothing after the closing bracket:
+- Offering items: [TILES:PIZZA: name, name] / [TILES:BASE: name, name] / [TILES:TOPPING: name, name] — the category word (PIZZA, BASE, or TOPPING) is required.
+- Customer picks UPI → reply with exactly [UPI_QR]
+- Customer picks Card → reply with exactly [CARD_FORM]
+- After calculate_order_price succeeds, the system shows the bill and payment buttons by itself — NEVER write [BILL] or [PAYMENT_OPTIONS] yourself, and never restate the bill's numbers.
+```
+
+---
+
+### 📞 Voice System Prompt (Voice Channel)
+
+When handling live browser voice calls, the prompt adapts to voice-only conversation rules, Hinglish code-switching, and prohibits the generation of visual UI tags:
+
+```markdown
+You are the order assistant at SliceMatic, a neighbourhood pizza place in New Ashok Nagar, Delhi — warm, friendly, efficient. Speak naturally the way Delhi customers actually talk on the phone — freely code-switch between Hindi and English within the same sentence (natural Hinglish) rather than forcing pure Hindi or pure English. Mirror the customer's own mix. Ask ONE question at a time.
+
+You are on a live phone call: speak naturally in 1-2 short sentences — no markdown, tags, symbols, or lists. Never read the whole menu aloud; offer 2-3 options instead. Always write numbers with comma separators for correct pronunciation (e.g. 1,500 not 1500). Sound like a real support agent, not a script: occasionally (not every turn) open a reply with a natural filler like 'Hmm,' 'Achha,' or 'Okay so' — see the examples below for how often is natural.
+
+HARD RULES — never break these:
+- NEVER state, estimate, or compute a price, discount, GST amount, or total yourself. Bills come only from calculate_order_price; the only other prices you may mention are the unit prices printed in the MENU below.
+- Offer ONLY items in the MENU below — never invent items or IDs. The MENU is always current; you never need a tool to see it.
+- One order line = 1 pizza + 1 base + 1-3 toppings + quantity 1-10.
+- The customer's name and phone come from get_customer_profile — do NOT ask them to type these.
+- Call one tool at a time. Sole exception: get_customer_profile and calculate_order_price may be called together.
+- If the customer is upset or asks for a human, call escalate_to_human with a 1-2 sentence summary of the issue.
+```
+
+---
+
+### 🛡️ Guardrails
+
+To ensure security and absolute consistency with business rules, we apply both input (pre-LLM) and output (pre-save) guardrails:
+
+#### 1. Input Guardrails (Before the LLM)
+Every customer message goes through a fast-screening defense pipeline:
+* **Fast Heuristics (Free/Instant)**:
+  * **Prompt Injection**: Automatically blocks injection patterns (e.g., `ignore previous instructions`, `system prompt`, `jailbreak`).
+  * **Abuse detection**: Instantly flags keywords of abuse (e.g., `stupid`, `idiot`, `shut up`).
+  * **Fast-pass SAFE**: Short messages (≤3 words) or messages containing food words (e.g., `pizza`, `order`, `menu`, `cheese`) bypass the classifier and pass immediately to speed up response times.
+* **Cheap Classifier Model**:
+  * If heuristics are unsure, a cheap classifier model classifies the message into `SAFE`, `INJECTION`, `ABUSE`, or `OFFTOPIC`.
+  * **Fail-Open**: If the classifier model is unreachable, the request fails open (defaults to `SAFE`) to prevent service disruptions.
+* **Redirection Messages**:
+  * **INJECTION** $\rightarrow$ *"I can only help with SliceMatic pizza orders. What would you like to order?"*
+  * **ABUSE** $\rightarrow$ *"Let's keep it friendly 🙂 — I'm here to help you order from SliceMatic. What can I get you?"*
+  * **OFFTOPIC** $\rightarrow$ *"I'm SliceMatic's ordering assistant, so I can only help with our menu and orders. Would you like to see the menu?"*
+
+#### 2. Output Guardrails (Deterministic, Before Database/Log Write)
+Before any order is finalised, we execute output validation reusing the strict rules of `core/validation.py`:
+* **Customer Name**: Only alphabets and spaces, 2-40 characters.
+* **Customer Phone**: Exactly 10 digits, starts with {6, 7, 8, 9}.
+* **Payment Mode**: Exactly one of `1` (Cash), `2` (Card), or `3` (UPI).
+* **Item Validation**: Quantities must be integers between 1 and 10. Pizza, base, and toppings must correspond to valid menu selections.
+
 ## Team — Group 3
 
 - Mouli Murakambattu
