@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bike,
   Check,
+  CreditCard,
   Loader2,
   MapPin,
   Phone,
@@ -45,6 +46,13 @@ const METHODS = [
     mode: "3",
     icon: Smartphone,
   },
+  {
+    id: "card",
+    label: "Credit / Debit Card",
+    desc: "Visa, Mastercard, RuPay",
+    mode: "2",
+    icon: CreditCard,
+  },
 ] as const;
 
 export default function CheckoutPage() {
@@ -62,6 +70,9 @@ export default function CheckoutPage() {
   const [editingContact, setEditingContact] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
 
   useEffect(() => {
     void reprice();
@@ -76,12 +87,18 @@ export default function CheckoutPage() {
     () => addresses.find((a) => a.id === addressId),
     [addresses, addressId]
   );
-  // "Cash at Store" is pickup — no address needed. Delivery (COD/UPI) requires
-  // a saved address BEFORE the order can be placed (see auth requirements).
+  // "Cash at Store" is pickup — no address needed. Every other method
+  // (COD/UPI/Card) is delivery and requires a saved address.
   const needsAddress = method.id !== "cash";
+  const cardOk =
+    method.id !== "card" ||
+    (/^\d{16}$/.test(cardNumber.replace(/\s/g, "")) &&
+      /^\d{2}\/\d{2}$/.test(cardExpiry) &&
+      /^\d{3,4}$/.test(cardCvv));
   const canPlace =
     nameOk &&
     phoneOk &&
+    cardOk &&
     cart.length > 0 &&
     !processing &&
     (!needsAddress || !!address);
@@ -91,8 +108,8 @@ export default function CheckoutPage() {
     setError(null);
     setProcessing(true);
 
-    // Simulated payment step for UPI (no real gateway).
-    if (method.id === "upi") {
+    // Simulated payment step for UPI/Card (no real gateway).
+    if (method.id === "upi" || method.id === "card") {
       await new Promise((r) => setTimeout(r, 1600));
     }
 
@@ -332,6 +349,72 @@ export default function CheckoutPage() {
                 );
               })}
             </div>
+
+            {methodId === "card" && (
+              <div className="space-y-3 rounded-xl border border-border bg-surface-2 p-3.5">
+                <div>
+                  <label
+                    htmlFor="co-card-number"
+                    className="mb-1 block text-xs text-muted-foreground"
+                  >
+                    Card number
+                  </label>
+                  <Input
+                    id="co-card-number"
+                    className="bg-card"
+                    inputMode="numeric"
+                    placeholder="1234 5678 9012 3456"
+                    maxLength={16}
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label
+                      htmlFor="co-card-expiry"
+                      className="mb-1 block text-xs text-muted-foreground"
+                    >
+                      MM/YY
+                    </label>
+                    <Input
+                      id="co-card-expiry"
+                      className="bg-card"
+                      placeholder="MM/YY"
+                      maxLength={5}
+                      value={cardExpiry}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+                        setCardExpiry(
+                          digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits
+                        );
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label
+                      htmlFor="co-card-cvv"
+                      className="mb-1 block text-xs text-muted-foreground"
+                    >
+                      CVV
+                    </label>
+                    <Input
+                      id="co-card-cvv"
+                      className="bg-card"
+                      type="password"
+                      inputMode="numeric"
+                      placeholder="123"
+                      maxLength={4}
+                      value={cardCvv}
+                      onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ""))}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Simulated payment — no real card is charged.
+                </p>
+              </div>
+            )}
           </section>
 
           {/* Summary */}
@@ -383,20 +466,20 @@ export default function CheckoutPage() {
           >
             {processing
               ? "Placing…"
-              : method.id === "upi"
+              : method.id === "upi" || method.id === "card"
                 ? `Pay ${totals ? formatINR(totals.total) : ""}`
                 : "Place order"}
           </Button>
         </div>
       </div>
 
-      {/* Simulated UPI payment overlay */}
-      {processing && method.id === "upi" && (
+      {/* Simulated UPI/Card payment overlay */}
+      {processing && (method.id === "upi" || method.id === "card") && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/90 backdrop-blur-sm">
           <Loader2 className="size-10 animate-spin text-primary" />
           <div className="text-center">
             <p className="font-heading text-lg font-semibold">
-              Processing UPI payment
+              {method.id === "upi" ? "Processing UPI payment" : "Processing card payment"}
             </p>
             <p className="text-sm text-muted-foreground">
               {totals ? formatINR(totals.total) : ""} · do not close this screen
