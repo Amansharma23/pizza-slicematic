@@ -172,7 +172,8 @@ def admin_ai_provider_status() -> dict:
         provider = _build_provider(provider_name)
         return {
             "provider": provider.name,
-            "configured": provider.name == "mock" or bool(getattr(provider, "api_key", "")),
+            "configured": provider.name == "mock"
+            or bool(getattr(provider, "api_key", "")),
             "fallback_provider": "mock",
         }
     except Exception as exc:
@@ -186,10 +187,10 @@ def admin_ai_provider_status() -> dict:
 
 def _provider_name() -> str:
     return (
-        os.environ.get("ADMIN_AI_PROVIDER")
-        or os.environ.get("AI_PROVIDER")
-        or "mock"
-    ).strip().lower()
+        (os.environ.get("ADMIN_AI_PROVIDER") or os.environ.get("AI_PROVIDER") or "mock")
+        .strip()
+        .lower()
+    )
 
 
 def _build_provider(provider_name: str) -> AdminAIProvider:
@@ -215,9 +216,7 @@ def _build_provider(provider_name: str) -> AdminAIProvider:
         api_key = _required_env("GEMINI_API_KEY")
         model = os.environ.get("ADMIN_AI_MODEL") or "gemini-1.5-flash"
         return GeminiAdminAIProvider(api_key=api_key, model=model)
-    raise ValueError(
-        "ADMIN_AI_PROVIDER must be mock, openai, gemini, or openrouter."
-    )
+    raise ValueError("ADMIN_AI_PROVIDER must be mock, openai, gemini, or openrouter.")
 
 
 def _required_env(key: str) -> str:

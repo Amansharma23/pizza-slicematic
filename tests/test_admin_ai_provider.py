@@ -43,7 +43,9 @@ def test_admin_ai_provider_status_for_unknown_provider(monkeypatch):
 
 
 def test_gemini_provider_normalizes_google_model_name():
-    provider = GeminiAdminAIProvider(api_key="test-key", model="models/gemini-2.5-flash")
+    provider = GeminiAdminAIProvider(
+        api_key="test-key", model="models/gemini-2.5-flash"
+    )
 
     assert provider.model == "gemini-2.5-flash"
 
@@ -65,9 +67,7 @@ def test_admin_ai_provider_extracts_json_array_from_provider_text(monkeypatch):
 
     class FakeClient:
         def __init__(self, **kwargs):
-            self.chat = type(
-                "FakeChat", (), {"completions": FakeCompletions()}
-            )()
+            self.chat = type("FakeChat", (), {"completions": FakeCompletions()})()
 
     monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeClient))
 

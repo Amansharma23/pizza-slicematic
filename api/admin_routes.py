@@ -8,8 +8,8 @@ from typing import Callable
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
-from db import admin_gateway as admin_db
 from core import pricing
+from db import admin_gateway as admin_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -415,7 +415,9 @@ def festival_coupon_suggestions(
 ) -> dict:
     return {
         "ok": True,
-        "suggestions": admin_db.list_festival_coupon_suggestions(limit=limit, year=year),
+        "suggestions": admin_db.list_festival_coupon_suggestions(
+            limit=limit, year=year
+        ),
     }
 
 
@@ -762,7 +764,10 @@ def ai_forecast(
     req: ForecastRequest,
     user: dict = Depends(require_permission("ai.insights.read")),
 ) -> dict:
-    return {"ok": True, "forecast": admin_db.generate_forecast(performed_by=user["id"], days=req.days)}
+    return {
+        "ok": True,
+        "forecast": admin_db.generate_forecast(performed_by=user["id"], days=req.days),
+    }
 
 
 @router.get("/ai/business-intelligence")

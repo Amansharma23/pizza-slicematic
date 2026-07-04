@@ -268,15 +268,21 @@ def _client(monkeypatch, user=None):
     monkeypatch.setattr(
         admin_routes.admin_db,
         "get_settings",
-        lambda: {"settings": [{"key": "restaurant_name", "value": {"value": "SliceMatic"}}]},
+        lambda: {
+            "settings": [{"key": "restaurant_name", "value": {"value": "SliceMatic"}}]
+        },
     )
     monkeypatch.setattr(
         admin_routes.admin_db,
         "update_settings",
-        lambda **_: {"settings": [{"key": "restaurant_name", "value": {"value": "SliceMatic"}}]},
+        lambda **_: {
+            "settings": [{"key": "restaurant_name", "value": {"value": "SliceMatic"}}]
+        },
     )
     monkeypatch.setattr(admin_routes.admin_db, "list_staff", lambda: [])
-    monkeypatch.setattr(admin_routes.admin_db, "list_roles", lambda: [{"name": "Admin"}])
+    monkeypatch.setattr(
+        admin_routes.admin_db, "list_roles", lambda: [{"name": "Admin"}]
+    )
     monkeypatch.setattr(
         admin_routes.admin_db,
         "create_staff",
@@ -327,7 +333,9 @@ def test_admin_json_serializer_handles_uuid():
     from uuid import UUID
 
     assert (
-        admin_routes.admin_db._json({"id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")})
+        admin_routes.admin_db._json(
+            {"id": UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")}
+        )
         == '{"id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}'
     )
 
@@ -578,7 +586,9 @@ def test_menu_create_update_delete_routes(monkeypatch):
 def test_pricing_and_price_history_routes(monkeypatch):
     user = _user(["admin.access", "pricing.manage"])
     client = _client(monkeypatch, user)
-    pricing = client.get("/admin/pricing", headers={"Authorization": "Bearer test-token"})
+    pricing = client.get(
+        "/admin/pricing", headers={"Authorization": "Bearer test-token"}
+    )
     history = client.get(
         "/admin/pricing/price-history",
         headers={"Authorization": "Bearer test-token"},

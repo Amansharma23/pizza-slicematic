@@ -92,7 +92,9 @@ def me(user: dict = Depends(require_staff)) -> dict:
 
 
 @router.get("/orders")
-def kitchen_orders(user: dict = Depends(require_staff_permission("orders.read"))) -> dict:
+def kitchen_orders(
+    user: dict = Depends(require_staff_permission("orders.read")),
+) -> dict:
     return {"ok": True, "orders": admin_db.list_staff_orders()}
 
 
@@ -177,7 +179,9 @@ def checkout(
 
 
 @router.get("/inventory")
-def inventory(user: dict = Depends(require_staff_permission("inventory.request"))) -> dict:
+def inventory(
+    user: dict = Depends(require_staff_permission("inventory.request")),
+) -> dict:
     inventory_data = admin_db.list_inventory()
     return {
         "ok": True,

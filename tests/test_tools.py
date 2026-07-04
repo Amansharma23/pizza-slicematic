@@ -58,7 +58,6 @@ def test_calculate_does_not_auto_discount_at_qty5(ids):
     assert payload["cart"]["discount"] == 0.0
 
 
-
 def test_calculate_multi_topping_sums_menu_prices(ids):
     """2-3 toppings are fused into one configuration; unit price adds them all."""
     b, p, _ = ids

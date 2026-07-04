@@ -811,7 +811,9 @@ def decide_refund(
             if old["status"] in {"Rejected", "Paid"}:
                 raise ValueError(f"Refund is already {old['status']}.")
             if status == "Paid" and old["status"] != "Approved":
-                raise ValueError("Refund must be approved before it can be marked paid.")
+                raise ValueError(
+                    "Refund must be approved before it can be marked paid."
+                )
             cur.execute(
                 """
                 update public.refunds
@@ -943,11 +945,9 @@ def list_inventory() -> dict:
             "total_menu_items": total_recipes,
             "mapped_menu_items": mapped_recipes,
             "unmapped_menu_items": total_recipes - mapped_recipes,
-            "coverage_percent": round(
-                (mapped_recipes / total_recipes) * 100, 2
-            )
-            if total_recipes
-            else 0,
+            "coverage_percent": (
+                round((mapped_recipes / total_recipes) * 100, 2) if total_recipes else 0
+            ),
         },
     }
 
@@ -1026,7 +1026,9 @@ def update_ingredient(
         raise ValueError("Reorder threshold must be non-negative.")
     with postgres.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("select * from public.ingredients where id = %s", (ingredient_id,))
+            cur.execute(
+                "select * from public.ingredients where id = %s", (ingredient_id,)
+            )
             old = _one(cur)
             if not old:
                 raise LookupError("Ingredient not found.")
@@ -1082,7 +1084,10 @@ def upsert_menu_item_ingredient(
             menu_item = _one(cur)
             if not menu_item:
                 raise LookupError("Menu item not found.")
-            cur.execute("select id, name from public.ingredients where id = %s", (ingredient_id,))
+            cur.execute(
+                "select id, name from public.ingredients where id = %s",
+                (ingredient_id,),
+            )
             ingredient = _one(cur)
             if not ingredient:
                 raise LookupError("Ingredient not found.")
@@ -1182,7 +1187,9 @@ def adjust_stock(
                 raise LookupError("Ingredient not found.")
             old_qty = float(old["stock_quantity"])
             new_qty = (
-                old_qty + quantity if transaction_type == "StockIn" else old_qty - quantity
+                old_qty + quantity
+                if transaction_type == "StockIn"
+                else old_qty - quantity
             )
             if new_qty < 0:
                 raise ValueError("Inventory cannot go negative.")
@@ -1243,7 +1250,10 @@ def create_inventory_request(
         raise ValueError("Inventory request reason is required.")
     with postgres.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("select id, name from public.ingredients where id = %s", (ingredient_id,))
+            cur.execute(
+                "select id, name from public.ingredients where id = %s",
+                (ingredient_id,),
+            )
             ingredient = _one(cur)
             if not ingredient:
                 raise LookupError("Ingredient not found.")
@@ -1398,7 +1408,9 @@ def create_menu_category(
     with postgres.connect() as conn:
         with conn.cursor() as cur:
             if sort_order is None:
-                cur.execute("select coalesce(max(sort_order), 0) + 1 as next_order from public.menu_categories")
+                cur.execute(
+                    "select coalesce(max(sort_order), 0) + 1 as next_order from public.menu_categories"
+                )
                 sort_order = int(_one(cur).get("next_order", 1))
             cur.execute(
                 """
@@ -1444,7 +1456,10 @@ def create_menu_item(
         raise ValueError("Price must be non-negative.")
     with postgres.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("select id, name from public.menu_categories where code = %s", (category,))
+            cur.execute(
+                "select id, name from public.menu_categories where code = %s",
+                (category,),
+            )
             category_row = _one(cur)
             if not category_row:
                 raise LookupError("Menu category not found.")
@@ -1658,7 +1673,9 @@ def get_pricing_settings() -> dict:
     return {
         "gst_rate_percent": float(settings.get("gst_rate_percent", 18)),
         "discount_rate_percent": float(settings.get("discount_rate_percent", 10)),
-        "discount_quantity_threshold": int(settings.get("discount_quantity_threshold", 5)),
+        "discount_quantity_threshold": int(
+            settings.get("discount_quantity_threshold", 5)
+        ),
         "discount_rules": discounts,
     }
 
@@ -1743,7 +1760,9 @@ def upsert_discount_rule(
         with conn.cursor() as cur:
             old = None
             if rule_id:
-                cur.execute("select * from public.discount_rules where id = %s", (rule_id,))
+                cur.execute(
+                    "select * from public.discount_rules where id = %s", (rule_id,)
+                )
                 old = _one(cur)
                 if not old:
                     raise LookupError("Discount rule not found.")
@@ -1830,7 +1849,9 @@ def upsert_discount_rule(
     return updated
 
 
-def list_festival_coupon_suggestions(limit: int = 6, year: int | None = None) -> list[dict]:
+def list_festival_coupon_suggestions(
+    limit: int = 6, year: int | None = None
+) -> list[dict]:
     _ensure_postgres()
     limit = max(1, min(limit, 20))
     with postgres.connect() as conn:
@@ -2011,7 +2032,9 @@ def create_staff(
                 (email.strip().lower(), full_name.strip(), phone),
             )
             user = _one(cur)
-            cur.execute("delete from public.user_roles where user_id = %s", (user["id"],))
+            cur.execute(
+                "delete from public.user_roles where user_id = %s", (user["id"],)
+            )
             cur.execute(
                 "insert into public.user_roles (user_id, role_id) values (%s, %s)",
                 (user["id"], role["id"]),
@@ -2087,7 +2110,9 @@ def update_staff(
                 (full_name.strip(), phone, status, old["user_id"]),
             )
             user = _one(cur)
-            cur.execute("delete from public.user_roles where user_id = %s", (old["user_id"],))
+            cur.execute(
+                "delete from public.user_roles where user_id = %s", (old["user_id"],)
+            )
             cur.execute(
                 "insert into public.user_roles (user_id, role_id) values (%s, %s)",
                 (old["user_id"], role["id"]),
@@ -2150,8 +2175,12 @@ def get_analytics_report(
         clauses.append("created_at::date <= %s::date")
         params.append(date_to)
     where = f"where {' and '.join(clauses)}" if clauses else ""
-    item_where = f"where {' and '.join('o.' + clause for clause in clauses)}" if clauses else ""
-    item_and = f"and {' and '.join('o.' + clause for clause in clauses)}" if clauses else ""
+    item_where = (
+        f"where {' and '.join('o.' + clause for clause in clauses)}" if clauses else ""
+    )
+    item_and = (
+        f"and {' and '.join('o.' + clause for clause in clauses)}" if clauses else ""
+    )
     with postgres.connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -2306,11 +2335,11 @@ def get_analytics_report(
     )
     discount_impact = {
         "discount": totals.get("discount", 0),
-        "discount_to_revenue_percent": round(
-            ((totals.get("discount", 0) or 0) / totals["revenue"]) * 100, 2
-        )
-        if totals.get("revenue")
-        else 0,
+        "discount_to_revenue_percent": (
+            round(((totals.get("discount", 0) or 0) / totals["revenue"]) * 100, 2)
+            if totals.get("revenue")
+            else 0
+        ),
     }
     return {
         "totals": totals,
@@ -2525,7 +2554,9 @@ def record_recommendation_event(
     if recommendation_type not in {"upsell", "coupon", "inventory", "staff", "churn"}:
         raise ValueError("Unsupported recommendation type.")
     if status not in {"presented", "accepted", "rejected"}:
-        raise ValueError("Recommendation status must be presented, accepted, or rejected.")
+        raise ValueError(
+            "Recommendation status must be presented, accepted, or rejected."
+        )
     if not recommendation_key.strip():
         raise ValueError("Recommendation key is required.")
     if not title.strip():
@@ -2611,9 +2642,7 @@ def get_recommendation_impact(limit: int = 20) -> dict:
         ),
     }
     totals["acceptance_rate"] = (
-        round((totals["accepted"] / totals["total"]) * 100, 2)
-        if totals["total"]
-        else 0
+        round((totals["accepted"] / totals["total"]) * 100, 2) if totals["total"] else 0
     )
     return {"totals": totals, "by_type": summary, "recent": recent}
 
@@ -2718,7 +2747,9 @@ def simulate_revenue_scenario(
     baseline_margin = revenue - estimated_food_cost - estimated_fixed_cost - discount
 
     projected_revenue = revenue * (1 + menu_price_adjustment_percent / 100)
-    projected_food_cost = estimated_food_cost * (1 + ingredient_price_increase_percent / 100)
+    projected_food_cost = estimated_food_cost * (
+        1 + ingredient_price_increase_percent / 100
+    )
     projected_discount = max(0, discount * (1 + discount_change_percent / 100))
     projected_fixed_cost = (
         estimated_fixed_cost + rent_increase_amount + other_fixed_cost_increase_amount
@@ -2736,7 +2767,9 @@ def simulate_revenue_scenario(
     if discount_change_percent > 0 or projected_discount > discount:
         actions.append("Avoid increasing discounts while costs are rising.")
     if projected_margin < baseline_margin:
-        actions.append("Promote high-margin items and reduce wastage before expanding offers.")
+        actions.append(
+            "Promote high-margin items and reduce wastage before expanding offers."
+        )
     if not actions:
         actions.append("Scenario keeps margin stable against current local data.")
 
@@ -2930,7 +2963,15 @@ def _build_inventory_forecast(days: int) -> list[dict]:
         stock = float(row.get("stock_quantity", 0) or 0)
         days_until_stockout = round(stock / usage, 1) if usage else None
         projected_stock = stock - (usage * days)
-        risk = "high" if projected_stock <= 0 else "medium" if projected_stock <= row.get("reorder_threshold", 0) else "low"
+        risk = (
+            "high"
+            if projected_stock <= 0
+            else (
+                "medium"
+                if projected_stock <= row.get("reorder_threshold", 0)
+                else "low"
+            )
+        )
         forecast.append(
             {
                 **row,
@@ -2939,7 +2980,9 @@ def _build_inventory_forecast(days: int) -> list[dict]:
                 "projected_stock": round(projected_stock, 3),
                 "days_until_stockout": days_until_stockout,
                 "risk": risk,
-                "suggested_reorder_quantity": round(max(0, (usage * (days + 3)) - stock), 3),
+                "suggested_reorder_quantity": round(
+                    max(0, (usage * (days + 3)) - stock), 3
+                ),
             }
         )
     return forecast
@@ -2956,7 +2999,11 @@ def _build_staff_scheduling(peak: dict) -> list[dict]:
                 "window": _hour_window(int(row.get("hour", 0))),
                 "orders": orders,
                 "suggested_staff": staff,
-                "role_mix": "1 customer-facing, remaining kitchen" if staff > 1 else "1 cross-trained staff",
+                "role_mix": (
+                    "1 customer-facing, remaining kitchen"
+                    if staff > 1
+                    else "1 cross-trained staff"
+                ),
             }
         )
     return suggestions
@@ -2984,7 +3031,9 @@ def _build_upsell_recommendations(metrics: dict) -> list[dict]:
 def _build_coupon_recommendations(metrics: dict) -> list[dict]:
     totals = metrics.get("totals", {})
     aov = float(totals.get("average_order_value", 0) or 0)
-    slow_hours = sorted(metrics.get("hourly_revenue", []), key=lambda row: row.get("orders", 0))[:3]
+    slow_hours = sorted(
+        metrics.get("hourly_revenue", []), key=lambda row: row.get("orders", 0)
+    )[:3]
     recommendations = []
     if aov:
         recommendations.append(
@@ -3358,7 +3407,9 @@ def get_settings() -> dict:
     _ensure_postgres()
     with postgres.connect() as conn:
         with conn.cursor() as cur:
-            cur.execute("select key, value, updated_at from public.app_settings order by key")
+            cur.execute(
+                "select key, value, updated_at from public.app_settings order by key"
+            )
             rows = _many(cur)
     return {"settings": rows}
 
@@ -3413,7 +3464,9 @@ def _build_metric_insights(metrics: dict) -> list[dict]:
     insights: list[dict] = []
     hourly = metrics.get("hourly_revenue") or []
     if hourly:
-        peak = max(hourly, key=lambda row: (row.get("orders", 0), row.get("revenue", 0)))
+        peak = max(
+            hourly, key=lambda row: (row.get("orders", 0), row.get("revenue", 0))
+        )
         insights.append(
             {
                 "type": "peak_hour",
@@ -3504,8 +3557,7 @@ def _deduct_order_inventory(
         (ingredient_ids,),
     )
     stocks = {
-        str(row[0]): {"name": row[1], "stock": float(row[2])}
-        for row in cur.fetchall()
+        str(row[0]): {"name": row[1], "stock": float(row[2])} for row in cur.fetchall()
     }
     shortages = []
     for ingredient_id, required in requirements.items():
