@@ -41,7 +41,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${playfair.variable} ${karla.variable} h-full`}
     >
-      <body className="min-h-full">
+      <body className="min-h-full" suppressHydrationWarning>
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

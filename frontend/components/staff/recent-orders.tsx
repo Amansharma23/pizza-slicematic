@@ -5,7 +5,6 @@ import {
   Check,
   ChefHat,
   Filter,
-  PackageCheck,
   PartyPopper,
   Receipt,
   RefreshCw,
@@ -15,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { getRecentOrders, type UserOrder } from "@/lib/api";
-import { ORDER_STEPS, orderStatus } from "@/lib/orders-store";
+import { orderStatus } from "@/lib/orders-store";
 import { cn, formatINR } from "@/lib/utils";
 
 /**
@@ -23,21 +22,21 @@ import { cn, formatINR } from "@/lib/utils";
  * built (the details step), so staff always see what's in flight without
  * leaving the kiosk's single screen.
  *
- * Reuses the EXACT same simulated status tracker as the customer Orders tab
- * (ORDER_STEPS + orderStatus() in lib/orders-store.ts — untouched, same
- * timing/logic). Only the displayed labels differ for this surface: index 2
- * ("Out for delivery") reads "Ready" and index 3 ("Delivered") reads
- * "Served" — dine-in/takeaway orders aren't couriered, so those words don't
- * apply here, but the underlying step index and timing are identical.
+ * Uses the REAL kitchen pipeline status (orderStatus() in lib/orders-store.ts
+ * — same source of truth as the customer Orders tab), not a simulated
+ * elapsed-time tracker. Staff/POS orders never carry a delivery_address, so
+ * orderStatus() always returns the 3-step pickup sequence (Received →
+ * Preparing → Ready for pickup) — relabeled "Served" here since for a
+ * dine-in/takeaway order, staff handing it over at the counter *is* that
+ * final step; there's no separate DB-tracked "served" state beyond it.
  *
  * Dine In / Takeaway filters the real persisted `order.type` field (see
  * pos-payment.tsx). The status filter (All / Preparing / Served) narrows by
- * the simulated step index (index < 3 vs index === 3) — same "any status but
- * the done one" rule used elsewhere, just against the simulated index
- * instead of a DB status column. "All" (default) shows both sections.
+ * the real step index (index < 2 vs index === 2) — same "any status but the
+ * done one" rule used elsewhere. "All" (default) shows both sections.
  */
-const STAFF_STEP_LABELS = ["Received", "Preparing", "Ready", "Served"];
-const STEP_ICONS = [Check, ChefHat, PackageCheck, PartyPopper];
+const STAFF_STEP_LABELS = ["Received", "Preparing", "Served"];
+const STEP_ICONS = [Check, ChefHat, PartyPopper];
 
 type StatusFilter = "all" | "preparing" | "served";
 type TypeFilter = "dine_in" | "takeaway";
@@ -52,7 +51,6 @@ export function RecentOrders() {
   const [orders, setOrders] = useState<UserOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("dine_in");
@@ -81,12 +79,6 @@ export function RecentOrders() {
     return () => clearInterval(t);
   }, [load]);
 
-  // Tick so the simulated step advances live while this panel is open.
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 10000);
-    return () => clearInterval(t);
-  }, []);
-
   useEffect(() => {
     if (!statusMenuOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -102,8 +94,8 @@ export function RecentOrders() {
     statusFilter === "all"
       ? orders
       : orders.filter((o) => {
-          const { index } = orderStatus(Date.parse(o.created_at), now);
-          return statusFilter === "served" ? index === 3 : index < 3;
+          const { index } = orderStatus(o);
+          return statusFilter === "served" ? index === 2 : index < 2;
         });
   const visible = byStatus.filter((o) => o.type === typeFilter);
 
@@ -247,7 +239,7 @@ export function RecentOrders() {
           <ul className="space-y-3 pb-2">
             {visible.map((o) => (
               <li key={o.order_no}>
-                <StaffOrderCard order={o} now={now} />
+                <StaffOrderCard order={o} />
               </li>
             ))}
           </ul>
@@ -257,9 +249,9 @@ export function RecentOrders() {
   );
 }
 
-function StaffOrderCard({ order, now }: { order: UserOrder; now: number }) {
+function StaffOrderCard({ order }: { order: UserOrder }) {
   const placedMs = Date.parse(order.created_at);
-  const { index } = orderStatus(placedMs, now);
+  const { index } = orderStatus(order);
   const placedTime = Number.isNaN(placedMs)
     ? ""
     : new Date(placedMs).toLocaleString([], {
@@ -292,9 +284,9 @@ function StaffOrderCard({ order, now }: { order: UserOrder; now: number }) {
         </span>
       </div>
 
-      {/* Status stepper — same steps/timing as the customer app, staff labels */}
+      {/* Status stepper — real kitchen pipeline status, staff labels */}
       <div className="flex items-center px-3 py-3">
-        {ORDER_STEPS.map((_, i) => {
+        {STAFF_STEP_LABELS.map((_, i) => {
           const Icon = STEP_ICONS[i];
           const done = i <= index;
           return (
@@ -319,7 +311,7 @@ function StaffOrderCard({ order, now }: { order: UserOrder; now: number }) {
                   {STAFF_STEP_LABELS[i]}
                 </span>
               </div>
-              {i < ORDER_STEPS.length - 1 && (
+              {i < STAFF_STEP_LABELS.length - 1 && (
                 <span
                   className={cn(
                     "-mt-3.5 h-0.5 flex-1 rounded",

@@ -13,6 +13,7 @@ env/
 .gradio/
 *.db
 database/menu_uploads/
+Aman/
 
 # Node
 node_modules/
@@ -33,3 +34,4 @@ _pg*.png
 # Secrets
 .env
 .env.local
+frontend/.env.local

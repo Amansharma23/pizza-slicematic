@@ -307,6 +307,8 @@ class CallSession:
             self._maybe_send_filler(turn_id, filler_lang, llm_done)
         )
 
+        await asyncio.sleep(0)
+
         t0 = time.perf_counter()
         try:
             reply, blocked = await asyncio.to_thread(
