@@ -689,6 +689,12 @@ export async function deleteAdminMenuItem(
   return adminJSON(`/admin/menu/${itemId}`, "DELETE", {});
 }
 
+export async function deleteAdminMenuCategory(
+  categoryId: string
+): Promise<{ ok: boolean; category: AdminMenuCategory }> {
+  return adminJSON(`/admin/menu/categories/${categoryId}`, "DELETE", {});
+}
+
 export async function getAdminPricing(): Promise<{ ok: boolean; pricing: AdminPricing }> {
   return adminGet("/admin/pricing");
 }

@@ -332,6 +332,23 @@ def create_menu_category(
     return {"ok": True, "category": category}
 
 
+@router.delete("/menu/categories/{category_id}")
+def delete_menu_category(
+    category_id: str,
+    user: dict = Depends(require_permission("menu.manage")),
+) -> dict:
+    try:
+        category = admin_db.delete_menu_category(
+            category_id,
+            performed_by=user["id"],
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "category": category}
+
+
 @router.post("/menu")
 def create_menu_item(
     req: MenuItemCreate,

@@ -1437,6 +1437,45 @@ def create_menu_category(
     return category
 
 
+def delete_menu_category(category_id: str, performed_by: str) -> dict:
+    _ensure_postgres()
+    with postgres.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select id, code, name, sort_order from public.menu_categories where id = %s",
+                (category_id,),
+            )
+            category = _one(cur)
+            if not category:
+                raise LookupError("Menu category not found.")
+            
+            if category["code"] in ("base", "pizza", "topping", "side"):
+                raise ValueError("Core categories (base, pizza, topping, side) cannot be deleted.")
+
+            cur.execute(
+                "delete from public.menu_items where category_id = %s",
+                (category_id,),
+            )
+            
+            cur.execute(
+                "delete from public.menu_categories where id = %s returning id, code, name, sort_order",
+                (category_id,),
+            )
+            deleted_cat = _one(cur)
+            
+            _audit(
+                cur,
+                action_type="menu.category.deleted",
+                entity_type="menu_category",
+                entity_id=category_id,
+                old_value=category,
+                new_value=None,
+                performed_by=performed_by,
+                reason="Admin hard delete",
+            )
+    return deleted_cat
+
+
 def create_menu_item(
     *,
     category: str,

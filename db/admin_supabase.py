@@ -532,6 +532,49 @@ def create_menu_category(
     return row
 
 
+def delete_menu_category(category_id: str, performed_by: str) -> dict:
+    cat = _one(
+        execute_query(
+            _client()
+            .table("menu_categories")
+            .select("*")
+            .eq("id", category_id)
+        )
+    )
+    if not cat:
+        raise LookupError("Menu category not found.")
+    
+    if cat["code"] in ("base", "pizza", "topping", "side"):
+        raise ValueError("Core categories (base, pizza, topping, side) cannot be deleted.")
+        
+    execute_query(
+        _client()
+        .table("menu_items")
+        .delete()
+        .eq("category_id", category_id)
+    )
+    
+    deleted = _one(
+        execute_query(
+            _client()
+            .table("menu_categories")
+            .delete()
+            .eq("id", category_id)
+        )
+    )
+    
+    _audit(
+        action_type="menu.category.deleted",
+        entity_type="menu_category",
+        entity_id=category_id,
+        old_value=cat,
+        new_value=None,
+        performed_by=performed_by,
+        reason="Admin hard delete",
+    )
+    return deleted
+
+
 def create_menu_item(
     *,
     category: str,
@@ -1640,10 +1683,26 @@ def generate_forecast(*, performed_by: str, days: int = 7) -> dict:
 
 def get_ai_business_intelligence(days: int = 7) -> dict:
     analytics = get_analytics_report()
-    forecast = generate_forecast(performed_by="system", days=days)
+    forecast_res = generate_forecast(performed_by="system", days=days)
+    forecast = forecast_res.get("forecast", [])
     peak = max(
         analytics["hourly_revenue"], key=lambda r: r.get("orders", 0), default={}
     )
+    
+    # Fetch orders list to run inventory and churn analyses
+    rows = list_orders(limit=1000)
+    
+    peak_rush = {
+        "top_hours": analytics["hourly_revenue"][:5],
+        "busiest_hour": peak,
+        "rush_window": _hour_window(peak.get("hour", 0)) if peak else None,
+        "recommendation": (
+            f"Prepare extra staff and ingredients around {_hour_window(int(peak.get('hour', 0)))}."
+            if peak
+            else "Add demo orders to detect peak rush windows."
+        ),
+    }
+    
     return {
         "provider": "supabase_deterministic",
         "provider_status": {
@@ -1653,18 +1712,13 @@ def get_ai_business_intelligence(days: int = 7) -> dict:
         },
         "source": "supabase_rest_metrics",
         "demand_forecast": forecast,
-        "peak_rush": {
-            "top_hours": analytics["hourly_revenue"][:5],
-            "busiest_hour": peak,
-            "rush_window": _hour_window(peak.get("hour", 0)) if peak else None,
-            "recommendation": "Staff the busiest window first.",
-        },
-        "inventory_forecast": [],
-        "staff_scheduling": [],
-        "smart_upsells": [],
-        "coupon_recommendations": [],
-        "churn_risks": [],
-        "ltv_recommendations": [],
+        "peak_rush": peak_rush,
+        "inventory_forecast": _build_inventory_forecast(days, rows),
+        "staff_scheduling": _build_staff_scheduling(peak_rush),
+        "smart_upsells": _build_upsell_recommendations(analytics),
+        "coupon_recommendations": _build_coupon_recommendations(analytics),
+        "churn_risks": _build_churn_risks(rows),
+        "ltv_recommendations": _build_ltv_recommendations(analytics),
         "sentiment_analysis": list_customer_feedback()["summary"],
         "voice_ordering_readiness": {
             "status": "ready",
@@ -1675,6 +1729,226 @@ def get_ai_business_intelligence(days: int = 7) -> dict:
         "safety_rules": ["Use real metrics only.", "Do not invent refunds or revenue."],
         "recommendation_impact": get_recommendation_impact(),
     }
+
+
+def _build_staff_scheduling(peak: dict) -> list[dict]:
+    suggestions = []
+    for row in peak.get("top_hours", []):
+        orders = int(row.get("orders", 0) or 0)
+        staff = 1 if orders <= 3 else 2 if orders <= 8 else 3
+        suggestions.append(
+            {
+                "hour": row.get("hour"),
+                "window": _hour_window(int(row.get("hour", 0))),
+                "orders": orders,
+                "suggested_staff": staff,
+                "role_mix": (
+                    "1 customer-facing, remaining kitchen"
+                    if staff > 1
+                    else "1 cross-trained staff"
+                ),
+            }
+        )
+    return suggestions
+
+
+def _build_upsell_recommendations(metrics: dict) -> list[dict]:
+    top_items = metrics.get("top_items", [])
+    top_toppings = metrics.get("top_toppings", [])
+    if not top_items:
+        return []
+    topping = top_toppings[0]["name"] if top_toppings else "extra cheese"
+    return [
+        {
+            "recommendation_key": f"upsell:{item['name']}:{topping}",
+            "trigger_item": item["name"],
+            "recommendation": f"Suggest {topping} with {item['name']}.",
+            "reason": "Based on top-selling item and topping trends.",
+            "estimated_value": round(float(item.get("revenue", 0) or 0) * 0.05, 2),
+            "source_metrics": {"item": item, "topping": topping},
+        }
+        for item in top_items[:5]
+    ]
+
+
+def _build_coupon_recommendations(metrics: dict) -> list[dict]:
+    totals = metrics.get("totals", {})
+    aov = float(totals.get("average_order_value", 0) or 0)
+    slow_hours = sorted(
+        metrics.get("hourly_revenue", []), key=lambda row: row.get("orders", 0)
+    )[:3]
+    recommendations = []
+    if aov:
+        recommendations.append(
+            {
+                "recommendation_key": "coupon:aov-booster",
+                "name": "AOV Booster",
+                "coupon": "BOOSTAOV",
+                "discount_percent": 8,
+                "threshold_amount": round(aov * 1.25, 2),
+                "reason": "Encourage baskets above current average order value.",
+                "estimated_value": round(aov * 0.08, 2),
+                "source_metrics": {"average_order_value": aov},
+            }
+        )
+    for row in slow_hours:
+        recommendations.append(
+            {
+                "recommendation_key": f"coupon:hour-{row.get('hour')}",
+                "name": f"Hour {row.get('hour')} Rush Builder",
+                "coupon": f"HOUR{row.get('hour')}",
+                "discount_percent": 10,
+                "threshold_amount": round(aov or 299, 2),
+                "reason": "Target low-order hours without changing core pricing.",
+                "estimated_value": round(float(row.get("revenue", 0) or 0) * 0.1, 2),
+                "source_metrics": row,
+            }
+        )
+    return recommendations[:4]
+
+
+def _build_ltv_recommendations(metrics: dict) -> list[dict]:
+    repeat_customers = metrics.get("repeat_customers", [])
+    recommendations = []
+    for row in repeat_customers[:5]:
+        revenue = float(row.get("revenue", 0) or 0)
+        orders = int(row.get("orders", 0) or 0)
+        if not orders:
+            continue
+        recommendations.append(
+            {
+                "customer_name": row.get("customer_name"),
+                "customer_phone": row.get("customer_phone"),
+                "estimated_ltv": round(revenue * 1.4, 2),
+                "recommended_discount_percent": 8 if orders >= 3 else 5,
+                "reason": "Prioritize repeat customers with controlled win-back offers.",
+                "short_term_loss_note": "Small coupon cost can be justified if repeat order likelihood remains high.",
+            }
+        )
+    return recommendations
+
+
+def _build_inventory_forecast(days: int, rows: list[dict]) -> list[dict]:
+    ingredients = _select("ingredients")
+    menu_items = _select("menu_items")
+    recipes = _select("menu_item_ingredients")
+    
+    active_ings = [i for i in ingredients if i.get("is_active") is True]
+    
+    today = date.today()
+    orders_30_days = []
+    for r in rows:
+        created = r.get("created_at") or ""
+        try:
+            d = datetime.fromisoformat(created.replace("Z", "+00:00")).date()
+            if d >= (today - timedelta(days=30)):
+                orders_30_days.append(r)
+        except Exception:
+            pass
+            
+    if not orders_30_days:
+        orders_30_days = rows
+        
+    num_days = 30.0
+    item_quantities = defaultdict(float)
+    for o in orders_30_days:
+        for item in o.get("items") or []:
+            p_name = item.get("pizza")
+            b_name = item.get("base")
+            qty = float(item.get("quantity") or 1)
+            if p_name:
+                item_quantities[p_name] += qty
+            if b_name:
+                item_quantities[b_name] += qty
+                
+    menu_item_avg_usage = {}
+    for mi in menu_items:
+        name = mi.get("name")
+        menu_item_avg_usage[mi["id"]] = item_quantities[name] / num_days
+        
+    forecast = []
+    for ing in active_ings:
+        ing_id = ing["id"]
+        avg_daily_usage = 0.0
+        for mii in recipes:
+            if mii.get("ingredient_id") == ing_id:
+                menu_item_id = mii.get("menu_item_id")
+                qty_per_unit = float(mii.get("quantity_per_unit") or 0)
+                avg_daily_usage += menu_item_avg_usage.get(menu_item_id, 0.0) * qty_per_unit
+                
+        usage = avg_daily_usage
+        stock = float(ing.get("stock_quantity") or 0)
+        days_until_stockout = round(stock / usage, 1) if usage else None
+        projected_stock = stock - (usage * days)
+        risk = (
+            "high"
+            if projected_stock <= 0
+            else (
+                "medium"
+                if projected_stock <= float(ing.get("reorder_threshold") or 0)
+                else "low"
+            )
+        )
+        forecast.append(
+            {
+                "id": ing["id"],
+                "name": ing["name"],
+                "unit": ing["unit"],
+                "stock_quantity": stock,
+                "reorder_threshold": ing.get("reorder_threshold"),
+                "avg_daily_usage": round(usage, 3),
+                "forecast_days": days,
+                "projected_stock": round(projected_stock, 3),
+                "days_until_stockout": days_until_stockout,
+                "risk": risk,
+                "suggested_reorder_quantity": round(
+                    max(0, (usage * (days + 3)) - stock), 3
+                ),
+            }
+        )
+    return forecast
+
+
+def _build_churn_risks(rows: list[dict]) -> list[dict]:
+    customer_orders = defaultdict(list)
+    for r in rows:
+        phone = r.get("customer_phone")
+        if phone:
+            customer_orders[phone].append(r)
+            
+    churn_list = []
+    today = date.today()
+    for phone, o_list in customer_orders.items():
+        if len(o_list) < 2:
+            continue
+        dates = []
+        for o in o_list:
+            c_at = o.get("created_at")
+            if c_at:
+                try:
+                    dates.append(datetime.fromisoformat(c_at.replace("Z", "+00:00")).date())
+                except Exception:
+                    pass
+        if not dates:
+            continue
+        max_date = max(dates)
+        days_since = (today - max_date).days
+        if days_since >= 21:
+            revenue = sum(_num(o.get("total")) for o in o_list)
+            name = next((o.get("customer_name") for o in o_list if o.get("customer_name")), "Unknown")
+            churn_list.append({
+                "customer_phone": phone,
+                "customer_name": name,
+                "orders": len(o_list),
+                "revenue": revenue,
+                "last_order_date": max_date.isoformat(),
+                "days_since_last_order": days_since,
+                "risk": "high" if days_since >= 45 else "medium",
+                "suggested_action": "Send win-back coupon with limited validity.",
+            })
+            
+    churn_list.sort(key=lambda x: (x["revenue"], x["days_since_last_order"]), reverse=True)
+    return churn_list[:10]
 
 
 def _hour_window(hour: int) -> str:
@@ -1752,6 +2026,14 @@ def list_customer_feedback(limit: int = 50) -> dict:
     avg_rating = (
         round(sum(_num(r.get("rating")) for r in rows) / total, 2) if total else 0
     )
+    
+    topics_counter = Counter()
+    for r in rows:
+        topics = r.get("topics") or []
+        for topic in topics:
+            topics_counter[topic] += 1
+    top_topics = [{"topic": k, "mentions": v} for k, v in topics_counter.most_common(8)]
+    
     summary = {
         "status": "active",
         "source": "supabase_customer_feedback",
@@ -1774,7 +2056,7 @@ def list_customer_feedback(limit: int = 50) -> dict:
                 else 0
             ),
         },
-        "top_topics": [],
+        "top_topics": top_topics,
         "recent": rows,
         "recommendation": "Collect more feedback for stronger sentiment insight.",
     }
