@@ -3,17 +3,6 @@
 import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  createAdminMenuCategory,
-  createAdminMenuItem,
-  deleteAdminMenuItem,
-  deleteAdminMenuCategory,
-  getAdminMenu,
-  updateAdminMenuItem,
-  type AdminMenuCategory,
-  type AdminMenuItem,
-} from "@/lib/admin-api";
-import { formatINR } from "@/lib/utils";
 import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
 import {
   AdminEmptyTableRow,
@@ -24,6 +13,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  createAdminMenuCategory,
+  createAdminMenuItem,
+  deleteAdminMenuCategory,
+  deleteAdminMenuItem,
+  getAdminMenu,
+  updateAdminMenuItem,
+  type AdminMenuCategory,
+  type AdminMenuItem,
+} from "@/lib/admin-api";
+import { formatINR } from "@/lib/utils";
 
 type State =
   | { status: "loading" }
@@ -162,9 +162,9 @@ export default function AdminMenuPage() {
         category: "pizza",
       }));
       await load();
-    } catch (err: any) {
-      alert(err.message || "Failed to delete category");
-    }
+    } catch (err: unknown) {
+  alert(err instanceof Error ? err.message : "Failed to delete category");
+}
   }
 
   useEffect(() => {
