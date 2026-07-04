@@ -169,7 +169,39 @@ def _resolve_cart_line(m, line: CartLineReq):
     )
 
 
-def _cart_line_dict(bill, toppings: list[MenuItem]) -> dict:
+def _cart_line_numbers(bill, cart_qualifies: bool) -> dict:
+    """Money fields for one cart line under the CART-level bulk-discount rule.
+
+    For API carts the discount applies when the TOTAL quantity across lines
+    meets the threshold (decided 2026-07-04), while core.compute_bill only
+    knows one line. Lines core already discounted (their own qty qualifies)
+    keep core's numbers unchanged; the remaining lines of a qualifying cart
+    get the identical formula re-applied here using core's own rate/GST
+    constants in core's exact order (discount -> taxable -> GST -> total).
+    A non-qualifying cart can't contain a qualifying line, so it always
+    passes through core's numbers untouched.
+    """
+    if not cart_qualifies or bill.discount > 0:
+        return {
+            "subtotal": bill.subtotal,
+            "discount": bill.discount,
+            "taxable": bill.taxable,
+            "gst": bill.gst,
+            "total": bill.total,
+        }
+    discount = round(pricing.get_discount_rate() * bill.subtotal, 2)
+    taxable = round(bill.subtotal - discount, 2)
+    gst = round(pricing.GST_RATE * taxable, 2)
+    return {
+        "subtotal": bill.subtotal,
+        "discount": discount,
+        "taxable": taxable,
+        "gst": gst,
+        "total": round(taxable + gst, 2),
+    }
+
+
+def _cart_line_dict(bill, toppings: list[MenuItem], nums: dict) -> dict:
     return {
         "base": {"id": bill.base.id, "name": bill.base.name, "price": bill.base.price},
         "pizza": {
@@ -180,11 +212,7 @@ def _cart_line_dict(bill, toppings: list[MenuItem]) -> dict:
         "toppings": [{"id": t.id, "name": t.name, "price": t.price} for t in toppings],
         "quantity": bill.quantity,
         "unit_price": bill.unit_price,
-        "subtotal": bill.subtotal,
-        "discount": bill.discount,
-        "taxable": bill.taxable,
-        "gst": bill.gst,
-        "total": bill.total,
+        **nums,
     }
 
 
@@ -365,6 +393,18 @@ def price_cart(req: CartReq):
     if not req.lines:
         return {"ok": False, "errors": {"lines": "Your order is empty."}}
 
+    # Pass 1: resolve every line so the discount can consider the WHOLE cart.
+    resolved = []
+    for idx, line in enumerate(req.lines):
+        bill, toppings, err = _resolve_cart_line(m, line)
+        if err:
+            return {"ok": False, "line_index": idx, "errors": err}
+        resolved.append((bill, toppings))
+
+    # Cart-level bulk discount: total pizzas across lines vs the threshold.
+    total_qty = sum(bill.quantity for bill, _ in resolved)
+    cart_qualifies = total_qty >= pricing.get_discount_threshold()
+
     out_lines = []
     totals = {
         "subtotal": 0.0,
@@ -373,13 +413,11 @@ def price_cart(req: CartReq):
         "gst": 0.0,
         "total": 0.0,
     }
-    for idx, line in enumerate(req.lines):
-        bill, toppings, err = _resolve_cart_line(m, line)
-        if err:
-            return {"ok": False, "line_index": idx, "errors": err}
-        out_lines.append(_cart_line_dict(bill, toppings))
+    for bill, toppings in resolved:
+        nums = _cart_line_numbers(bill, cart_qualifies)
+        out_lines.append(_cart_line_dict(bill, toppings, nums))
         for k in totals:
-            totals[k] = round(totals[k] + getattr(bill, k), 2)
+            totals[k] = round(totals[k] + nums[k], 2)
 
     return {"ok": True, "lines": out_lines, "cart": totals}
 

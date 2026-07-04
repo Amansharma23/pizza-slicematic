@@ -217,6 +217,16 @@ export function getMenu(): Promise<Menu> {
   return getJSON<Menu>("/api/menu");
 }
 
+/** Runtime pricing config — the admin can adjust the bulk-discount rule. */
+export interface PricingConfig {
+  discount_rate: number; // fraction, e.g. 0.1
+  discount_threshold: number; // min quantity per line
+}
+
+export function getConfig(): Promise<PricingConfig> {
+  return getJSON<PricingConfig>("/api/config");
+}
+
 /* ------------------------- Cart pricing --------------------- */
 // Multi-line, multi-topping (1..3) pricing. All money is computed server-side
 // by core/ — the client only sends ids + quantities and renders the result.
@@ -280,6 +290,8 @@ export interface CheckoutPayload {
   payment_mode: string;
   /** Delivery address line — required by the UI for delivery orders. */
   address: string;
+  /** Order channel — server default "online"; the staff POS sends "store". */
+  type?: string;
   lines: CartLinePayload[];
 }
 

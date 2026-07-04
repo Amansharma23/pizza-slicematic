@@ -30,7 +30,7 @@ export function StaffKioskGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
         <span className="text-sm font-medium">
           Staff Kiosk ·{" "}
@@ -88,7 +88,7 @@ function KioskLogin({
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-6">
+    <div className="flex h-full items-center justify-center px-6">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-3 text-center">
           <span className="grid size-16 place-items-center rounded-2xl bg-surface-2 text-primary">
