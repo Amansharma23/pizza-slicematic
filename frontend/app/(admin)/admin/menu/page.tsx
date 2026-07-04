@@ -3,16 +3,6 @@
 import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  createAdminMenuCategory,
-  createAdminMenuItem,
-  deleteAdminMenuItem,
-  getAdminMenu,
-  updateAdminMenuItem,
-  type AdminMenuCategory,
-  type AdminMenuItem,
-} from "@/lib/admin-api";
-import { formatINR } from "@/lib/utils";
 import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
 import {
   AdminEmptyTableRow,
@@ -23,6 +13,17 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  createAdminMenuCategory,
+  createAdminMenuItem,
+  deleteAdminMenuCategory,
+  deleteAdminMenuItem,
+  getAdminMenu,
+  updateAdminMenuItem,
+  type AdminMenuCategory,
+  type AdminMenuItem,
+} from "@/lib/admin-api";
+import { formatINR } from "@/lib/utils";
 
 type State =
   | { status: "loading" }
@@ -48,6 +49,7 @@ export default function AdminMenuPage() {
   });
   const [categoryDraft, setCategoryDraft] = useState({ code: "", name: "" });
   const [classModalOpen, setClassModalOpen] = useState(false);
+  const [pendingCategoryDelete, setPendingCategoryDelete] = useState<AdminMenuCategory | null>(null);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -149,6 +151,20 @@ export default function AdminMenuPage() {
     } finally {
       setSaving(null);
     }
+  }
+
+  async function handleCategoryDelete(categoryId: string) {
+    try {
+      await deleteAdminMenuCategory(categoryId);
+      setActiveCategory("pizza");
+      setDraft((current) => ({
+        ...current,
+        category: "pizza",
+      }));
+      await load();
+    } catch (err: unknown) {
+  alert(err instanceof Error ? err.message : "Failed to delete category");
+}
   }
 
   useEffect(() => {
@@ -291,13 +307,29 @@ export default function AdminMenuPage() {
 
       <section className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border p-4">
-          <div>
-            <h2 className="font-heading text-lg font-semibold">
-              {activeCategoryMeta?.name ?? "Menu Items"}
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Horizontal classes show one section at a time.
-            </p>
+          <div className="flex items-start gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="font-heading text-lg font-semibold">
+                  {activeCategoryMeta?.name ?? "Menu Items"}
+                </h2>
+                {!["base", "pizza", "topping", "side"].includes(activeCategoryMeta?.code ?? "") && activeCategoryMeta && (
+                  <Button
+                    variant="destructive"
+                    className="h-7 px-2 text-xs font-semibold"
+                    onClick={() => {
+                      setPendingCategoryDelete(activeCategoryMeta);
+                    }}
+                  >
+                    <Trash2 className="size-3 mr-1" />
+                    Remove Class
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Horizontal classes show one section at a time.
+              </p>
+            </div>
           </div>
           <Badge>{filteredItems.length}</Badge>
         </div>
@@ -360,6 +392,20 @@ export default function AdminMenuPage() {
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           if (pendingDelete) void deleteItem(pendingDelete);
+        }}
+      />
+
+      <AdminConfirmDialog
+        open={Boolean(pendingCategoryDelete)}
+        title={`Delete "${pendingCategoryDelete?.name ?? ""}" class?`}
+        description={`This will permanently remove the "${pendingCategoryDelete?.name ?? ""}" class and all menu items inside it. This action cannot be undone.`}
+        confirmLabel="Delete class"
+        onCancel={() => setPendingCategoryDelete(null)}
+        onConfirm={() => {
+          if (pendingCategoryDelete) {
+            void handleCategoryDelete(pendingCategoryDelete.id);
+            setPendingCategoryDelete(null);
+          }
         }}
       />
 
