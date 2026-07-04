@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from api import routes as public_routes
 from core import validation as v
 from core.menu import MenuError
-from db import admin as admin_db
+from db import admin_gateway as admin_db
 
 router = APIRouter(prefix="/staff", tags=["staff"])
 

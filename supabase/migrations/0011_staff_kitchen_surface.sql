@@ -20,17 +20,25 @@ join public.permissions p on p.code in (
 where r.name = 'Backstage Staff'
 on conflict do nothing;
 
-insert into public.app_users (email, full_name, phone, status)
+insert into public.app_users (email, name, full_name, phone, status, role, secret_hash, emp_id)
 values (
     'kitchen@slicematic.local',
     'Kitchen Staff',
+    'Kitchen Staff',
     '9876500001',
-    'active'
+    'active',
+    'kitchen_staff',
+    'temp',
+    'SMEMP999'
 )
 on conflict (email) do update set
+    name = excluded.name,
     full_name = excluded.full_name,
     phone = excluded.phone,
     status = excluded.status,
+    role = excluded.role,
+    secret_hash = excluded.secret_hash,
+    emp_id = excluded.emp_id,
     updated_at = now();
 
 insert into public.user_roles (user_id, role_id)

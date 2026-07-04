@@ -4,5 +4,5 @@
 alter table public.orders drop constraint if exists orders_source_check;
 alter table public.orders
     add constraint orders_source_check check (
-        source in ('app', 'api', 'ai', 'voice', 'staff_pos')
+        source in ('app', 'api', 'ai', 'voice', 'staff_pos', 'chat')
     );

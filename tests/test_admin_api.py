@@ -275,6 +275,7 @@ def _client(monkeypatch, user=None):
         "update_settings",
         lambda **_: {"settings": [{"key": "restaurant_name", "value": {"value": "SliceMatic"}}]},
     )
+    monkeypatch.setattr(admin_routes.admin_db, "list_staff", lambda: [])
     monkeypatch.setattr(admin_routes.admin_db, "list_roles", lambda: [{"name": "Admin"}])
     monkeypatch.setattr(
         admin_routes.admin_db,

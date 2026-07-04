@@ -8,7 +8,7 @@ from typing import Callable
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
-from db import admin as admin_db
+from db import admin_gateway as admin_db
 from core import pricing
 
 router = APIRouter(prefix="/admin", tags=["admin"])

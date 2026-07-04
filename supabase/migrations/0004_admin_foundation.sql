@@ -82,18 +82,24 @@ insert into public.permissions (code, description) values
     ('audit.read', 'Read audit logs.')
 on conflict (code) do update set description = excluded.description;
 
-insert into public.app_users (id, email, full_name, phone, status)
+insert into public.app_users (id, email, name, full_name, phone, status, role, secret_hash)
 values (
     'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     'admin@slicematic.local',
     'Aman Admin',
-    '9876543210',
-    'active'
+    'Aman Admin',
+    null,
+    'active',
+    'admin',
+    'temp'
 )
 on conflict (email) do update set
+    name = excluded.name,
     full_name = excluded.full_name,
     phone = excluded.phone,
     status = excluded.status,
+    role = excluded.role,
+    secret_hash = excluded.secret_hash,
     updated_at = now();
 
 insert into public.user_roles (user_id, role_id)

@@ -18,6 +18,10 @@ alter table public.orders
         'Refunded',
         'received',
         'confirmed',
+        'preparing',
+        'ready_for_pickup',
+        'out_for_delivery',
+        'delivered',
         'cancelled'
     ));
 
