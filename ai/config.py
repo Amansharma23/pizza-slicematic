@@ -64,7 +64,7 @@ class Settings:
     # native Hinglish code-mixing. v3 has its own speaker roster (v2 speakers like
     # "abhilash" are invalid on v3) — kept separate from sarvam_speaker above so the
     # batch REST path (ai/sarvam.py, still on bulbul:v2) is unaffected.
-    sarvam_v3_speaker: str = "priya"
+    sarvam_v3_speaker: str = "ratan"
 
     @property
     def models(self) -> tuple[str, ...]:
@@ -119,5 +119,5 @@ def get_settings() -> Settings:
         sarvam_speaker=_env("SARVAM_SPEAKER") or "anushka",
         sarvam_model=_env("SARVAM_MODEL") or "bulbul:v2",
         sarvam_stt_model=_env("SARVAM_STT_MODEL") or "saarika:v2.5",
-        sarvam_v3_speaker=_env("SARVAM_V3_SPEAKER") or "priya",
+        sarvam_v3_speaker=_env("SARVAM_V3_SPEAKER") or "ratan",
     )

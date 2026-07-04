@@ -59,8 +59,10 @@ export function Composer({
   const notice = !VOICE_ENABLED
     ? null
     : call.state === "ended"
-      ? "Call ended (3-minute limit). Start a new call or keep typing."
-      : call.state === "denied" || call.state === "unsupported"
+      ? (call.error ?? "Call ended. Start a new call or keep typing.")
+      : call.state === "denied" ||
+          call.state === "unsupported" ||
+          call.state === "unreachable"
         ? (call.error ?? "Voice calls aren't available in this browser.")
         : null;
 

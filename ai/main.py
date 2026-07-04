@@ -43,7 +43,9 @@ def _warmup() -> None:
     never stored. Best-effort: a warmup failure (no keys/network) must never
     stop the server."""
     try:
-        from ai import agent, guardrails, observability, tools
+        import asyncio
+
+        from ai import agent, guardrails, observability, tools, voice_fillers
         from ai.session import Session
         from db.client import get_client as get_db
 
@@ -58,7 +60,12 @@ def _warmup() -> None:
         # (measured ~2s on the first >3-word message) — warm it with a message
         # long enough to bypass the short-message heuristic.
         guardrails.check_input("hello there, I would like to order a pizza please")
-        log.info("AI warmup complete (agent + guardrail LLM turns)")
+        # Pre-synthesize one "thinking" filler per language (ai/voice_call.py's
+        # instant-filler-while-the-LLM-thinks feature) so the first live call
+        # doesn't pay that one-time Sarvam TTS cost itself.
+        asyncio.run(voice_fillers.get_filler_audio("en"))
+        asyncio.run(voice_fillers.get_filler_audio("hi"))
+        log.info("AI warmup complete (agent + guardrail LLM turns + voice fillers)")
     except Exception as exc:
         log.warning("AI warmup skipped: %s", exc)
 

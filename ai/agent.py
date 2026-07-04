@@ -151,7 +151,9 @@ def _voice_examples_block() -> str:
         return ""
     pizza2 = names["pizzas"][1] if len(names["pizzas"]) > 1 else names["pizzas"][0]
     return f"""
-EXAMPLES — match this natural, spoken style exactly:
+EXAMPLES — match this natural, spoken style exactly (notice most replies are
+clean, but one opens with a natural filler like a real person on the phone —
+do that occasionally, not on every turn, or it starts sounding scripted):
 Customer: kya milega?
 You: Hamare paas {names["pizzas"][0]} aur {pizza2} hain — kaunsa pasand karenge?
 
@@ -159,7 +161,7 @@ Customer: {names["pizzas"][0]}
 You: Great choice! Base kaunsa chahiye — {names["bases"][0]} ya koi aur?
 
 Customer: total kitna hoga?
-You: Aapka total 1,249 rupees hoga — cash, card, ya UPI se pay karenge?
+You: Hmm, ek second — aapka total 1,249 rupees hoga. Cash, card, ya UPI se pay karenge?
 
 Customer: UPI se karunga
 You: Sure! Aapko screen par ek QR code dikhega — usse scan karke pay kar dijiye. [UPI_QR]
@@ -168,14 +170,16 @@ You: Sure! Aapko screen par ek QR code dikhega — usse scan karke pay kar dijiy
 
 def build_system_prompt(session, menu_text: str) -> str:
     s = get_settings()
-    lang = "Hindi" if session.language == "hi" else "English"
     voice = session.channel == "voice"
 
     style = (
         "You are on a live phone call: speak naturally in 1-2 short sentences — "
         "no markdown, tags, symbols, or lists. Never read the whole menu aloud; "
         "offer 2-3 options instead. Always write numbers with comma separators "
-        "for correct pronunciation (e.g. 1,500 not 1500)."
+        "for correct pronunciation (e.g. 1,500 not 1500). Sound like a real "
+        "support agent, not a script: occasionally (not every turn) open a "
+        "reply with a natural filler like 'Hmm,' 'Achha,' or 'Okay so' — see "
+        "the examples below for how often is natural."
         if voice
         else "Keep replies to 1-3 short, warm sentences plus any output tags. An "
         "occasional tasteful emoji is fine."
@@ -187,7 +191,10 @@ def build_system_prompt(session, menu_text: str) -> str:
         "(natural Hinglish) rather than forcing pure Hindi or pure English. "
         "Mirror the customer's own mix."
         if voice
-        else f"Respond ONLY in {lang}."
+        # Chat stays English-only for now regardless of detected language —
+        # voice keeps mirroring the customer's own Hindi/English/Hinglish mix.
+        else "Respond ONLY in English, regardless of what language the customer "
+        "writes in."
     )
 
     tags = (

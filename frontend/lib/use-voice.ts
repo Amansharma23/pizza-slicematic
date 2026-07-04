@@ -17,6 +17,7 @@ export type VoiceState =
   | "speaking"
   | "ended"
   | "denied"
+  | "unreachable"
   | "unsupported";
 
 /**
@@ -55,6 +56,19 @@ function endReasonMessage(reason: string): string {
       return "Connection lost. Start a new call when you're ready.";
     default:
       return "Something went wrong with the call. Please try again.";
+  }
+}
+
+/** A call_ended arriving before the connection ever reached "ready" (e.g. the
+ *  3-minute-per-session cap already used up, or STT unavailable) — carries
+ *  the real reason through to the outer catch so it gets the SAME accurate
+ *  message endReasonMessage() already gives a mid-call ending, instead of
+ *  being swallowed into a generic "can't reach the service" error. */
+class PreReadyCallEnded extends Error {
+  reason: string;
+  constructor(reason: string) {
+    super(reason);
+    this.reason = reason;
   }
 }
 
@@ -183,15 +197,26 @@ function createRealtimeCallMachine({
       return;
     }
     setState("connecting");
-    try {
-      const sessionId = useChatStore.getState().ensureSessionId();
-      const token = useAuthStore.getState().token;
 
+    // Grabbed separately from the connect/setup steps below: only an actual
+    // getUserMedia rejection means the mic is genuinely blocked. Lumping a
+    // WebSocket/backend failure into the same catch used to report
+    // "Microphone blocked" even when the mic was never the problem.
+    try {
       // Echo cancellation matters here: the mic stays open while the
       // assistant's own voice plays through the speakers.
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+    } catch {
+      setState("denied");
+      setError("Microphone blocked. Allow mic access to start a voice call.");
+      return;
+    }
+
+    try {
+      const sessionId = useChatStore.getState().ensureSessionId();
+      const token = useAuthStore.getState().token;
 
       await new Promise<void>((resolve, reject) => {
         const socket = new WebSocket(voiceCallWsUrl());
@@ -223,7 +248,7 @@ function createRealtimeCallMachine({
               player = new StreamingAudioPlayer(Number(msg.audio_sample_rate) || 22050);
               resolve();
             } else if (msg.type === "call_ended") {
-              reject(new Error(String(msg.reason ?? "connect_failed")));
+              reject(new PreReadyCallEnded(String(msg.reason ?? "connect_failed")));
             }
             return;
           }
@@ -260,10 +285,15 @@ function createRealtimeCallMachine({
       setRemainingMs(CAP_MS);
       startCapTimer();
       setState("listening");
-    } catch {
+    } catch (err) {
       cleanup();
-      setState("denied");
-      setError("Microphone blocked. Allow mic access to start a voice call.");
+      if (err instanceof PreReadyCallEnded) {
+        setState("ended");
+        setError(endReasonMessage(err.reason));
+      } else {
+        setState("unreachable");
+        setError("Can't reach the voice service right now. Please try again.");
+      }
     }
   }
 
