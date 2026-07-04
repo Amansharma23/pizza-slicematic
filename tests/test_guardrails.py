@@ -5,7 +5,7 @@ from ai.guardrails import check_customer, check_input
 def _no_classifier(monkeypatch):
     """Make the LLM classifier explode if called — proves heuristics handled it."""
 
-    def boom(text):
+    def boom(text, session_id=None):
         raise AssertionError("classifier should not be called")
 
     monkeypatch.setattr(g, "_classify_llm", boom)
@@ -47,20 +47,20 @@ def test_food_message_passes_without_llm(monkeypatch):
 
 
 def test_uncertain_routes_to_classifier_offtopic(monkeypatch):
-    monkeypatch.setattr(g, "_classify_llm", lambda text: "OFFTOPIC")
+    monkeypatch.setattr(g, "_classify_llm", lambda text, session_id=None: "OFFTOPIC")
     r = check_input("can you explain the history of the roman empire in great detail")
     assert r.ok is False and r.category == "OFFTOPIC"
 
 
 def test_uncertain_classifier_says_safe(monkeypatch):
-    monkeypatch.setattr(g, "_classify_llm", lambda text: "SAFE")
+    monkeypatch.setattr(g, "_classify_llm", lambda text, session_id=None: "SAFE")
     r = check_input("the weather outside is quite pleasant this fine evening indeed")
     assert r.ok is True
 
 
 def test_classifier_fails_open(monkeypatch):
     # Simulate the real _classify_llm catching an error and returning SAFE.
-    def fake_client_error(text):
+    def fake_client_error(text, session_id=None):
         try:
             raise RuntimeError("network down")
         except Exception:

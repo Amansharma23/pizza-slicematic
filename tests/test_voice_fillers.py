@@ -68,7 +68,7 @@ def _make_call(monkeypatch, session, llm_delay: float):
     monkeypatch.setattr(
         guardrails,
         "check_input",
-        lambda text: guardrails.InputCheck(ok=True, category="SAFE"),
+        lambda text, session_id=None: guardrails.InputCheck(ok=True, category="SAFE"),
     )
     monkeypatch.setattr(voice_call, "_persist_turn", lambda *a, **k: None)
     monkeypatch.setattr(

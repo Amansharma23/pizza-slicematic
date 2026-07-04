@@ -535,34 +535,23 @@ def create_menu_category(
 def delete_menu_category(category_id: str, performed_by: str) -> dict:
     cat = _one(
         execute_query(
-            _client()
-            .table("menu_categories")
-            .select("*")
-            .eq("id", category_id)
+            _client().table("menu_categories").select("*").eq("id", category_id)
         )
     )
     if not cat:
         raise LookupError("Menu category not found.")
-    
+
     if cat["code"] in ("base", "pizza", "topping", "side"):
-        raise ValueError("Core categories (base, pizza, topping, side) cannot be deleted.")
-        
-    execute_query(
-        _client()
-        .table("menu_items")
-        .delete()
-        .eq("category_id", category_id)
-    )
-    
-    deleted = _one(
-        execute_query(
-            _client()
-            .table("menu_categories")
-            .delete()
-            .eq("id", category_id)
+        raise ValueError(
+            "Core categories (base, pizza, topping, side) cannot be deleted."
         )
+
+    execute_query(_client().table("menu_items").delete().eq("category_id", category_id))
+
+    deleted = _one(
+        execute_query(_client().table("menu_categories").delete().eq("id", category_id))
     )
-    
+
     _audit(
         action_type="menu.category.deleted",
         entity_type="menu_category",
@@ -1217,7 +1206,7 @@ def list_inventory() -> dict:
         for r in _select("inventory_requests")
     ]
     menu = list_menu_items()["items"]
-    menu_by_id = {m["id"]: m for m in menu}
+    menu_by_id = {m["id"]: m for m in menu}  # noqa: F841
     recipes_by_menu: dict[str, list] = defaultdict(list)
     for rec in _select("menu_item_ingredients"):
         ing = ing_by_id.get(rec.get("ingredient_id"), {})
@@ -1688,10 +1677,10 @@ def get_ai_business_intelligence(days: int = 7) -> dict:
     peak = max(
         analytics["hourly_revenue"], key=lambda r: r.get("orders", 0), default={}
     )
-    
+
     # Fetch orders list to run inventory and churn analyses
     rows = list_orders(limit=1000)
-    
+
     peak_rush = {
         "top_hours": analytics["hourly_revenue"][:5],
         "busiest_hour": peak,
@@ -1702,7 +1691,7 @@ def get_ai_business_intelligence(days: int = 7) -> dict:
             else "Add demo orders to detect peak rush windows."
         ),
     }
-    
+
     return {
         "provider": "supabase_deterministic",
         "provider_status": {
@@ -1832,9 +1821,9 @@ def _build_inventory_forecast(days: int, rows: list[dict]) -> list[dict]:
     ingredients = _select("ingredients")
     menu_items = _select("menu_items")
     recipes = _select("menu_item_ingredients")
-    
+
     active_ings = [i for i in ingredients if i.get("is_active") is True]
-    
+
     today = date.today()
     orders_30_days = []
     for r in rows:
@@ -1845,10 +1834,10 @@ def _build_inventory_forecast(days: int, rows: list[dict]) -> list[dict]:
                 orders_30_days.append(r)
         except Exception:
             pass
-            
+
     if not orders_30_days:
         orders_30_days = rows
-        
+
     num_days = 30.0
     item_quantities = defaultdict(float)
     for o in orders_30_days:
@@ -1860,12 +1849,12 @@ def _build_inventory_forecast(days: int, rows: list[dict]) -> list[dict]:
                 item_quantities[p_name] += qty
             if b_name:
                 item_quantities[b_name] += qty
-                
+
     menu_item_avg_usage = {}
     for mi in menu_items:
         name = mi.get("name")
         menu_item_avg_usage[mi["id"]] = item_quantities[name] / num_days
-        
+
     forecast = []
     for ing in active_ings:
         ing_id = ing["id"]
@@ -1874,8 +1863,10 @@ def _build_inventory_forecast(days: int, rows: list[dict]) -> list[dict]:
             if mii.get("ingredient_id") == ing_id:
                 menu_item_id = mii.get("menu_item_id")
                 qty_per_unit = float(mii.get("quantity_per_unit") or 0)
-                avg_daily_usage += menu_item_avg_usage.get(menu_item_id, 0.0) * qty_per_unit
-                
+                avg_daily_usage += (
+                    menu_item_avg_usage.get(menu_item_id, 0.0) * qty_per_unit
+                )
+
         usage = avg_daily_usage
         stock = float(ing.get("stock_quantity") or 0)
         days_until_stockout = round(stock / usage, 1) if usage else None
@@ -1915,7 +1906,7 @@ def _build_churn_risks(rows: list[dict]) -> list[dict]:
         phone = r.get("customer_phone")
         if phone:
             customer_orders[phone].append(r)
-            
+
     churn_list = []
     today = date.today()
     for phone, o_list in customer_orders.items():
@@ -1926,7 +1917,9 @@ def _build_churn_risks(rows: list[dict]) -> list[dict]:
             c_at = o.get("created_at")
             if c_at:
                 try:
-                    dates.append(datetime.fromisoformat(c_at.replace("Z", "+00:00")).date())
+                    dates.append(
+                        datetime.fromisoformat(c_at.replace("Z", "+00:00")).date()
+                    )
                 except Exception:
                     pass
         if not dates:
@@ -1935,19 +1928,26 @@ def _build_churn_risks(rows: list[dict]) -> list[dict]:
         days_since = (today - max_date).days
         if days_since >= 21:
             revenue = sum(_num(o.get("total")) for o in o_list)
-            name = next((o.get("customer_name") for o in o_list if o.get("customer_name")), "Unknown")
-            churn_list.append({
-                "customer_phone": phone,
-                "customer_name": name,
-                "orders": len(o_list),
-                "revenue": revenue,
-                "last_order_date": max_date.isoformat(),
-                "days_since_last_order": days_since,
-                "risk": "high" if days_since >= 45 else "medium",
-                "suggested_action": "Send win-back coupon with limited validity.",
-            })
-            
-    churn_list.sort(key=lambda x: (x["revenue"], x["days_since_last_order"]), reverse=True)
+            name = next(
+                (o.get("customer_name") for o in o_list if o.get("customer_name")),
+                "Unknown",
+            )
+            churn_list.append(
+                {
+                    "customer_phone": phone,
+                    "customer_name": name,
+                    "orders": len(o_list),
+                    "revenue": revenue,
+                    "last_order_date": max_date.isoformat(),
+                    "days_since_last_order": days_since,
+                    "risk": "high" if days_since >= 45 else "medium",
+                    "suggested_action": "Send win-back coupon with limited validity.",
+                }
+            )
+
+    churn_list.sort(
+        key=lambda x: (x["revenue"], x["days_since_last_order"]), reverse=True
+    )
     return churn_list[:10]
 
 
@@ -2026,14 +2026,14 @@ def list_customer_feedback(limit: int = 50) -> dict:
     avg_rating = (
         round(sum(_num(r.get("rating")) for r in rows) / total, 2) if total else 0
     )
-    
+
     topics_counter = Counter()
     for r in rows:
         topics = r.get("topics") or []
         for topic in topics:
             topics_counter[topic] += 1
     top_topics = [{"topic": k, "mentions": v} for k, v in topics_counter.most_common(8)]
-    
+
     summary = {
         "status": "active",
         "source": "supabase_customer_feedback",

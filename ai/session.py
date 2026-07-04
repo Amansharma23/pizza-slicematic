@@ -41,6 +41,7 @@ class Session:
     confirmed: bool = False
     human_escalated: bool = False
     voice_started_at: float | None = None  # epoch seconds, for the 3-min cap
+    ended_at: float | None = None  # epoch seconds, when the call ended
 
     def add(self, role: str, content: str | None = None, **extra) -> dict:
         """Append one message to the LLM history and return it."""
@@ -103,4 +104,5 @@ def mirror(session: Session) -> bool:
         customer_phone=session.phone,
         human_escalated=session.human_escalated,
         voice_started_at=_iso(session.voice_started_at),
+        ended_at=_iso(session.ended_at),
     )

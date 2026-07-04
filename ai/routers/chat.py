@@ -65,7 +65,7 @@ def chat(
     attach_user(session, authorization)
 
     with sess.lock_for(session_id):
-        check = guardrails.check_input(req.message)
+        check = guardrails.check_input(req.message, session.id)
         if check.ok:
             t0 = time.perf_counter()
             reply = agent.run_turn(session, req.message)
