@@ -47,3 +47,21 @@ def add_escalation(
     except Exception as exc:
         log.warning("Supabase escalation insert failed (%s): %s", session_id, exc)
         return None
+
+
+def get_escalations(limit: int = 50) -> list[dict]:
+    """Fetch recent human-escalation events, sorted by created_at descending."""
+    client = get_client()
+    if client is None:
+        return []
+    try:
+        res = execute_query(
+            client.table("escalations")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(limit)
+        )
+        return res.data or []
+    except Exception as exc:
+        log.warning("Supabase escalations select failed: %s", exc)
+        return []

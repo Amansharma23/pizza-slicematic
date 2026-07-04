@@ -479,3 +479,158 @@ export async function synthesizeSpeech(
   if (!res.ok) throw new ApiError(`Speech synthesis failed (${res.status}).`, res.status);
   return res.blob();
 }
+
+/* --------------------------- Observability dashboard --------------------------- */
+// /api/dashboard/* — admin-only, read-side of the Langfuse tracing data (see
+// dashboard/langfuse_query.py). Distinct from /api/analytics (business/order
+// analytics from core/analytics.py) — this is LLM cost + session + tool usage.
+
+export interface DashboardChannelStats {
+  cost: number;
+  turns: number;
+  sessions: number;
+  voice_duration?: number;
+  voice_cost_inr?: number;
+}
+
+export interface DashboardSummary {
+  days: number;
+  total_cost: number;
+  total_turns: number;
+  total_sessions: number;
+  total_voice_duration?: number;
+  total_voice_cost_inr?: number;
+  avg_voice_duration?: number;
+  avg_voice_cost_inr?: number;
+  by_channel: {
+    chat: DashboardChannelStats;
+    voice: DashboardChannelStats;
+  };
+}
+
+export function getDashboardSummary(
+  token: string,
+  days = 30
+): Promise<DashboardSummary> {
+  return getJSON<DashboardSummary>(
+    `/api/dashboard/summary?days=${days}`,
+    authHeader(token)
+  );
+}
+
+export interface DashboardSessionRow {
+  session_id: string;
+  channel: "chat" | "voice" | "mixed" | "unknown";
+  turn_count: number;
+  total_cost: number;
+  first_seen: string;
+  last_seen: string;
+  voice_duration: number;
+  voice_cost_inr: number;
+}
+
+export interface DashboardSessionsResponse {
+  page: number;
+  limit: number;
+  total: number;
+  rows: DashboardSessionRow[];
+}
+
+export function getDashboardSessions(
+  token: string,
+  opts?: { days?: number; page?: number; limit?: number }
+): Promise<DashboardSessionsResponse> {
+  const params = new URLSearchParams();
+  if (opts?.days) params.set("days", String(opts.days));
+  if (opts?.page) params.set("page", String(opts.page));
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  return getJSON<DashboardSessionsResponse>(
+    `/api/dashboard/sessions?${params.toString()}`,
+    authHeader(token)
+  );
+}
+
+export interface DashboardToolCall {
+  name: string | null;
+  start_time: string | null;
+  end_time: string | null;
+}
+
+export interface DashboardModelCall {
+  model: string | null;
+  cost: number | null;
+}
+
+export interface DashboardTurn {
+  trace_id: string;
+  timestamp: string;
+  cost: number;
+  latency: number | null;
+  tools_used: DashboardToolCall[];
+  models_used: DashboardModelCall[];
+  user_message: string | null;
+  assistant_message: string | null;
+  system_message: string | null;
+}
+
+export interface DashboardSessionDetail {
+  session_id: string;
+  turn_count: number;
+  total_cost: number;
+  voice_duration: number;
+  voice_cost_inr: number;
+  turns: DashboardTurn[];
+}
+
+export function getDashboardSessionDetail(
+  token: string,
+  sessionId: string
+): Promise<DashboardSessionDetail> {
+  return getJSON<DashboardSessionDetail>(
+    `/api/dashboard/sessions/${encodeURIComponent(sessionId)}`,
+    authHeader(token)
+  );
+}
+
+export interface DashboardEscalation {
+  id: string;
+  session_id: string;
+  reason?: string;
+  channel?: string;
+  language?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  langfuse_session_id?: string;
+  langfuse_url?: string;
+  created_at: string;
+}
+
+export interface DashboardScore {
+  id: string;
+  name: string;
+  value: number;
+  session_id?: string;
+  trace_id?: string;
+  comment?: string;
+  timestamp?: string;
+}
+
+export function getDashboardEscalations(
+  token: string,
+  limit = 50
+): Promise<DashboardEscalation[]> {
+  return getJSON<DashboardEscalation[]>(
+    `/api/dashboard/escalations?limit=${limit}`,
+    authHeader(token)
+  );
+}
+
+export function getDashboardScores(
+  token: string,
+  days = 30
+): Promise<DashboardScore[]> {
+  return getJSON<DashboardScore[]>(
+    `/api/dashboard/scores?days=${days}`,
+    authHeader(token)
+  );
+}

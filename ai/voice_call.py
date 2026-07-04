@@ -16,7 +16,7 @@ import logging
 import re
 import time
 
-from ai import agent, guardrails, sarvam_stream
+from ai import agent, guardrails, observability, sarvam_stream
 from ai import session as sess
 from ai import voice_fillers
 from ai.language import detect
@@ -82,7 +82,7 @@ def _process_turn_sync(session, transcript: str) -> tuple[str, bool]:
     session.channel = "voice"
     session.language = detect(transcript)
     with sess.lock_for(session.id):
-        check = guardrails.check_input(transcript)
+        check = guardrails.check_input(transcript, session.id)
         if check.ok:
             return agent.run_turn(session, transcript), False
         return check.message, True
@@ -202,6 +202,14 @@ class CallSession:
                     exc,
                 )
                 if attempt >= STT_CONNECT_ATTEMPTS:
+                    if self.session is not None:
+                        observability.score_session(
+                            self.session.id,
+                            "stt_failed",
+                            True,
+                            data_type="BOOLEAN",
+                            comment=str(exc),
+                        )
                     await self._end_call("stt_unavailable")
                     return
                 await asyncio.sleep(STT_RETRY_BACKOFF_S)
@@ -251,6 +259,10 @@ class CallSession:
                 await close_tts()
         except Exception:
             log.exception("voice greeting failed")
+            if self.session is not None:
+                observability.score_session(
+                    self.session.id, "tts_failed", True, data_type="BOOLEAN"
+                )
             await self._send_json({"type": "tts_failed"})
 
     # ------------------------------------------------------------------ #
@@ -363,11 +375,18 @@ class CallSession:
                     await self._send_bytes(chunk.audio)
                 else:
                     await self._send_json({"type": "assistant_audio_end"})
-            log.info("[timing] TTS(voice-rt) %.2fs", time.perf_counter() - t_tts)
+            tts_seconds = time.perf_counter() - t_tts
+            log.info("[timing] TTS(voice-rt) %.2fs", tts_seconds)
+            observability.score_session(
+                self.session.id, "tts_latency_seconds", tts_seconds, data_type="NUMERIC"
+            )
         except asyncio.CancelledError:
             raise
         except Exception:
             log.exception("voice TTS failed")
+            observability.score_session(
+                self.session.id, "tts_failed", True, data_type="BOOLEAN"
+            )
             await self._send_json({"type": "tts_failed"})
         finally:
             if close_tts is not None:
@@ -437,6 +456,9 @@ class CallSession:
             except Exception:
                 pass
         finally:
+            if hasattr(self, "session") and self.session:
+                self.session.ended_at = time.time()
+                sess.mirror(self.session)
             await self._teardown(pending)
 
     async def _drain_queue(self) -> None:

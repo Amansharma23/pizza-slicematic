@@ -10,11 +10,12 @@ The LLM never computes prices and may only use item IDs that exist in the menu.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 
-from ai import guardrails
+from ai import guardrails, observability
 
 # Shared live-menu resolver (default/custom) + the multi-topping fuser the cart
 # endpoints already use — one MenuItem with summed menu prices for compute_bill.
@@ -510,6 +511,9 @@ def _escalate_to_human(args, session) -> str:
                 langfuse_session_id=session.id,
                 langfuse_url=_langfuse_session_url(session.id),
             )
+        observability.score_session(
+            session.id, "escalated", True, data_type="BOOLEAN", comment=reason
+        )
     log.info("Escalation requested: %s", reason)
     return (
         "I've flagged this for a team member — someone will reach out shortly. "
@@ -528,12 +532,36 @@ _DISPATCH = {
 
 
 def execute_tool(name: str, args: dict | None, session=None) -> str:
-    """Run a tool by name, returning a string for the LLM. Never raises."""
+    """Run a tool by name, returning a string for the LLM. Never raises.
+
+    Wrapped in a Langfuse "tool" observation (when enabled) so each call —
+    pricing, saving an order, escalating — is independently visible/timeable
+    in the trace tree, not just reconstructable after the fact from the next
+    LLM call's message history."""
     fn = _DISPATCH.get(name)
     if fn is None:
         return f"Unknown tool: {name}"
+
+    client = observability.get_langfuse()
+    span_cm = (
+        client.start_as_current_observation(name=name, as_type="tool", input=args or {})
+        if client is not None
+        else contextlib.nullcontext()
+    )
     try:
-        return fn(args or {}, session)
+        with span_cm as span:
+            result = fn(args or {}, session)
+            if span is not None:
+                span.update(output=result)
+            return result
     except Exception as exc:  # surface as text, never crash the agent loop
         log.warning("Tool '%s' failed: %s", name, exc)
+        if session is not None:
+            observability.score_session(
+                session.id,
+                "tool_error",
+                True,
+                data_type="BOOLEAN",
+                comment=f"{name}: {exc}",
+            )
         return f"Tool '{name}' encountered an error: {exc}"

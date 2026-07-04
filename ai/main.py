@@ -22,6 +22,7 @@ from ai.routers.chat import router as chat_router
 from ai.routers.voice import router as voice_router
 from ai.routers.voice_ws import router as voice_ws_router
 from api.routes import router as api_router
+from dashboard.routes import router as dashboard_router
 
 # Show our INFO logs (timing, STT results). Without this the root logger stays at
 # WARNING, so only warnings surfaced (which is why the timing lines never showed).
@@ -97,6 +98,9 @@ app.include_router(api_router)  # /api/* (menu, summary, order, analytics, ...)
 app.include_router(chat_router)  # /chat
 app.include_router(voice_router)  # /voice/transcribe, /voice/respond, /voice/synthesize
 app.include_router(voice_ws_router)  # WS /voice/call (real-time, additive)
+app.include_router(
+    dashboard_router
+)  # /api/dashboard/* (observability dashboard, additive)
 
 
 @app.get("/health")

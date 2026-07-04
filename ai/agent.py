@@ -9,6 +9,7 @@ fallback2 so a single provider outage doesn't break the turn.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
@@ -248,11 +249,14 @@ def _assistant_to_dict(msg) -> dict:
 
 
 def _complete(session):
-    """One model call with app-level fallback across configured models."""
+    """One model call with app-level fallback across configured models.
+
+    No per-call Langfuse tagging here — run_turn already has a parent span
+    open for the whole turn (see below), so this generation nests under it
+    automatically. That means a fallback retry becomes a sibling generation
+    under the SAME trace instead of its own disconnected one, and its cost
+    correctly sums into that trace's total_cost."""
     client = get_client()
-    lf = observability.trace_kwargs(
-        session.id, f"{session.channel}-turn", language=session.language
-    )
     # Cap voice replies to keep them short and fast to generate/speak.
     extra = {"max_tokens": 160} if session.channel == "voice" else {"max_tokens": 1000}
     tool_defs = tools.tools_for(session)  # stage-gated subset
@@ -270,9 +274,14 @@ def _complete(session):
                 # Providers without reasoning simply ignore this.
                 extra_body={"reasoning": {"enabled": False}},
                 **extra,
-                **lf,
             )
             log.info("[timing] LLM %s %.2fs", model, time.perf_counter() - t0)
+            # Auto-scoring: which model actually answered. The categorical
+            # distribution of values across sessions IS the fallback-frequency
+            # metric — no separate boolean needed.
+            observability.score_session(
+                session.id, "model_used", model, data_type="CATEGORICAL"
+            )
             return resp, model
         except Exception as exc:
             last_exc = exc
@@ -331,57 +340,82 @@ def _confirmation_text(session, saved: dict) -> str:
 
 
 def run_turn(session, user_message: str) -> str:
-    """Process one user message and return the assistant's reply text."""
-    _set_system_prompt(session)
-    session.add("user", user_message)
-    try:
-        for _ in range(MAX_ROUNDS):
-            try:
-                resp, model = _complete(session)
-            except Exception as exc:
-                log.warning("All models failed: %s", exc)
-                return _apology(session.language)
-            msg = resp.choices[0].message
-            session.history.append(_assistant_to_dict(msg))
-            if not msg.tool_calls:
-                return msg.content or ""
-            price_result = None
-            confirm_result = None
-            for call in msg.tool_calls:
-                try:
-                    args = json.loads(call.function.arguments or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                result = tools.execute_tool(call.function.name, args, session)
-                session.history.append(
-                    {"role": "tool", "tool_call_id": call.id, "content": result}
-                )
-                if call.function.name == "calculate_order_price":
-                    price_result = result
-                elif call.function.name == "confirm_and_save_order":
-                    confirm_result = result
+    """Process one user message and return the assistant's reply text.
 
-            # UI Injection: on a deterministic tool success, reply directly —
-            # no second LLM pass to rephrase (or mangle) the numbers. Failures
-            # (plain-string results) fall through to the LLM so it re-prompts.
-            saved = _tool_json(confirm_result)
-            if saved:
-                auto_reply = _confirmation_text(session, saved)
-                session.history.append({"role": "assistant", "content": auto_reply})
-                return auto_reply
-            # Bill injection is chat-only: voice replies go to TTS, which must
-            # never speak raw JSON/markup — the voice LLM reads back the total.
-            if session.channel == "chat" and _tool_json(price_result):
-                auto_reply = (
-                    f"[BILL]\n{price_result}\n[/BILL]\n\n"
-                    "How would you like to pay?\n\n[PAYMENT_OPTIONS]"
-                )
-                session.history.append({"role": "assistant", "content": auto_reply})
-                return auto_reply
-        return (
-            "Sorry, that took too many steps — could you simplify your request?"
-            if session.language != "hi"
-            else "माफ़ कीजिए, अनुरोध बहुत लंबा हो गया — कृपया इसे थोड़ा सरल करें।"
+    Opens ONE Langfuse span for the whole turn — every model call (including
+    fallback retries) and every tool execution nests under it (same OTel
+    context), so a turn is always exactly one trace with correctly-summed
+    cost, not scattered across disconnected traces the way per-call tagging
+    used to produce."""
+    client = observability.get_langfuse()
+    span_cm = (
+        client.start_as_current_observation(
+            name=f"{session.channel}-turn",
+            as_type="span",
+            metadata={"langfuse_session_id": session.id, "language": session.language},
+            input=user_message,
         )
-    finally:
-        observability.flush()
+        if client is not None
+        else contextlib.nullcontext()
+    )
+    with span_cm:
+        _set_system_prompt(session)
+        session.add("user", user_message)
+        try:
+            for _ in range(MAX_ROUNDS):
+                try:
+                    resp, model = _complete(session)
+                except Exception as exc:
+                    log.warning("All models failed: %s", exc)
+                    return _apology(session.language)
+                msg = resp.choices[0].message
+                session.history.append(_assistant_to_dict(msg))
+                if not msg.tool_calls:
+                    return msg.content or ""
+                price_result = None
+                confirm_result = None
+                for call in msg.tool_calls:
+                    try:
+                        args = json.loads(call.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    result = tools.execute_tool(call.function.name, args, session)
+                    session.history.append(
+                        {"role": "tool", "tool_call_id": call.id, "content": result}
+                    )
+                    if call.function.name == "calculate_order_price":
+                        price_result = result
+                    elif call.function.name == "confirm_and_save_order":
+                        confirm_result = result
+
+                # UI Injection: on a deterministic tool success, reply directly —
+                # no second LLM pass to rephrase (or mangle) the numbers. Failures
+                # (plain-string results) fall through to the LLM so it re-prompts.
+                saved = _tool_json(confirm_result)
+                if saved:
+                    observability.score_session(
+                        session.id,
+                        "order_placed",
+                        True,
+                        data_type="BOOLEAN",
+                        comment=saved.get("order_no"),
+                    )
+                    auto_reply = _confirmation_text(session, saved)
+                    session.history.append({"role": "assistant", "content": auto_reply})
+                    return auto_reply
+                # Bill injection is chat-only: voice replies go to TTS, which must
+                # never speak raw JSON/markup — the voice LLM reads back the total.
+                if session.channel == "chat" and _tool_json(price_result):
+                    auto_reply = (
+                        f"[BILL]\n{price_result}\n[/BILL]\n\n"
+                        "How would you like to pay?\n\n[PAYMENT_OPTIONS]"
+                    )
+                    session.history.append({"role": "assistant", "content": auto_reply})
+                    return auto_reply
+            return (
+                "Sorry, that took too many steps — could you simplify your request?"
+                if session.language != "hi"
+                else "माफ़ कीजिए, अनुरोध बहुत लंबा हो गया — कृपया इसे थोड़ा सरल करें।"
+            )
+        finally:
+            observability.flush()
