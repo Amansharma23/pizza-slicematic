@@ -836,7 +836,7 @@ function EvaluationView({
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={g.avg_score >= 0.8 ? "primary" : g.avg_score >= 0.4 ? "default" : "secondary"}>
+                          <Badge variant={g.avg_score >= 0.8 ? "success" : g.avg_score >= 0.4 ? "default" : "destructive"}>
                             {g.avg_score.toFixed(2)}
                           </Badge>
                         </td>
@@ -894,7 +894,7 @@ function EvaluationView({
                 </p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs text-muted-foreground">Session Avg Score:</span>
-                  <Badge variant={selectedSessionData.avg_score >= 0.8 ? "primary" : selectedSessionData.avg_score >= 0.4 ? "default" : "secondary"}>
+                  <Badge variant={selectedSessionData.avg_score >= 0.8 ? "success" : selectedSessionData.avg_score >= 0.4 ? "default" : "destructive"}>
                     {selectedSessionData.avg_score.toFixed(2)}
                   </Badge>
                 </div>
@@ -957,7 +957,7 @@ function EvaluationView({
                     <div key={s.id} className="rounded-lg bg-surface-2 p-2.5 text-xs space-y-1 border border-border">
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-foreground">{s.name}</span>
-                        <Badge variant={s.value === 1.0 && s.name === "guardrail_category" ? "default" : s.value === 1.0 ? "primary" : "secondary"}>
+                        <Badge variant={s.value === 1.0 && s.name === "guardrail_category" ? "destructive" : s.value === 1.0 ? "success" : "default"}>
                           {s.value}
                         </Badge>
                       </div>
