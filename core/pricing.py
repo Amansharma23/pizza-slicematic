@@ -14,9 +14,10 @@ from __future__ import annotations
 
 from core.models import Bill, MenuItem
 
-_discount_threshold = 5  # quantity at or above which the discount applies
-_discount_rate = 0.10  # 10%
-GST_RATE = 0.18  # 18%
+_discount_threshold = 999999  # legacy auto-discount disabled; use coupons.
+_discount_rate = 0.0
+_gst_rate = 0.18  # 18%
+GST_RATE = 0.18  # Backward-compatible constant for old imports.
 
 
 def get_discount_rate() -> float:
@@ -25,7 +26,10 @@ def get_discount_rate() -> float:
 
 def set_discount_rate(rate: float):
     global _discount_rate
-    _discount_rate = float(rate)
+    rate = float(rate)
+    if rate < 0 or rate > 1:
+        raise ValueError("Discount rate must be between 0 and 1.")
+    _discount_rate = rate
 
 
 def get_discount_threshold() -> int:
@@ -38,6 +42,19 @@ def set_discount_threshold(threshold: int):
     if threshold < 1:
         raise ValueError("Discount threshold must be at least 1.")
     _discount_threshold = threshold
+
+
+def get_gst_rate() -> float:
+    return _gst_rate
+
+
+def set_gst_rate(rate: float):
+    global _gst_rate, GST_RATE
+    rate = float(rate)
+    if rate < 0 or rate > 0.5:
+        raise ValueError("GST rate must be between 0 and 0.5.")
+    _gst_rate = rate
+    GST_RATE = rate
 
 
 def _money(value: float) -> float:
@@ -58,13 +75,8 @@ def compute_bill(
         if quantity >= get_discount_threshold()
         else 0.0
     )
-    discount = (
-        _money(get_discount_rate() * subtotal)
-        if quantity >= get_discount_threshold()
-        else 0.0
-    )
     taxable = _money(subtotal - discount)
-    gst = _money(GST_RATE * taxable)
+    gst = _money(get_gst_rate() * taxable)
     total = _money(taxable + gst)
     return Bill(
         base=base,

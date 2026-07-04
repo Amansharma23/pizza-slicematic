@@ -115,6 +115,17 @@ def main() -> int:
                 raise AssertionError("Swapped menu was not loaded.")
             print("Swapped menu loaded successfully.")
 
+            config = request_json(
+                "/api/config",
+                {
+                    "discount_rate": 0.10,
+                    "discount_threshold": 5,
+                    "gst_rate": 0.18,
+                },
+            )
+            if not config.get("ok"):
+                raise AssertionError(f"Pricing config failed: {config}")
+
             order = request_json(
                 "/api/order",
                 {

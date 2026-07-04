@@ -81,7 +81,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "calculate_order_price",
-            "description": "Compute the itemised bill (subtotal, 10% discount at qty>=5, "
+            "description": "Compute the itemised bill (subtotal, "
             "18% GST, total) for one or more order lines (1-3 toppings each). In chat "
             "the bill is shown to the customer automatically — do not repeat its "
             "numbers. On a voice call, read back only the total.",

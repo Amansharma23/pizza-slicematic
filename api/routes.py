@@ -239,6 +239,7 @@ class CheckoutReq(BaseModel):
 class ConfigReq(BaseModel):
     discount_rate: float
     discount_threshold: int = 5
+    gst_rate: float | None = None
 
 
 class OrderStatusReq(BaseModel):
@@ -550,6 +551,7 @@ def get_config():
     return {
         "discount_rate": pricing.get_discount_rate(),
         "discount_threshold": pricing.get_discount_threshold(),
+        "gst_rate": pricing.get_gst_rate(),
     }
 
 
@@ -557,10 +559,13 @@ def get_config():
 def update_config(req: ConfigReq):
     pricing.set_discount_rate(req.discount_rate)
     pricing.set_discount_threshold(req.discount_threshold)
+    if req.gst_rate is not None:
+        pricing.set_gst_rate(req.gst_rate)
     return {
         "ok": True,
         "discount_rate": pricing.get_discount_rate(),
         "discount_threshold": pricing.get_discount_threshold(),
+        "gst_rate": pricing.get_gst_rate(),
     }
 
 
