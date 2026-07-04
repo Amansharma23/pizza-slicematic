@@ -11,17 +11,18 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { UserOrder } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
-import { ORDER_STEPS, orderStatus, useOrdersStore } from "@/lib/orders-store";
+import { orderStatus, useOrdersStore } from "@/lib/orders-store";
 import { cn, formatINR } from "@/lib/utils";
 
-const STEP_ICONS = [Check, ChefHat, Bike, PackageCheck];
+// Received, Preparing, Ready for pickup, Out for delivery, Delivered.
+const STEP_ICONS = [Check, ChefHat, PackageCheck, Bike, PartyPopper];
 
 export default function OrdersPage() {
   return (
@@ -35,19 +36,21 @@ function OrdersContent() {
   const { orders, loading, error, load } = useOrdersStore();
   const phone = useAuthStore((s) => s.user?.phone);
   const placed = useSearchParams().get("placed");
-  const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     // Per-user filter by the signed-in account's phone (chat/voice + checkout
     // orders all carry it); swapping to user_id is part of the authz step.
     if (phone) void load(phone);
   }, [load, phone]);
 
-  // Tick so the simulated status advances live while the tab is open.
+  useEffect(() => refresh(), [refresh]);
+
+  // Poll so real status changes (kitchen/delivery marking an order along)
+  // show up while the tab is open, without a manual refresh.
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 10000);
+    const t = setInterval(refresh, 15000);
     return () => clearInterval(t);
-  }, []);
+  }, [refresh]);
 
   if (loading && orders.length === 0) {
     return (
@@ -101,7 +104,6 @@ function OrdersContent() {
           <OrderCard
             key={order.order_no}
             order={order}
-            now={now}
             highlight={order.order_no === placed}
           />
         ))}
@@ -112,15 +114,13 @@ function OrdersContent() {
 
 function OrderCard({
   order,
-  now,
   highlight,
 }: {
   order: UserOrder;
-  now: number;
   highlight?: boolean;
 }) {
   const placedMs = Date.parse(order.created_at);
-  const { index, step } = orderStatus(placedMs, now);
+  const { index, step, steps } = orderStatus(order);
   const placedTime = Number.isNaN(placedMs)
     ? ""
     : new Date(placedMs).toLocaleString([], {
@@ -143,12 +143,14 @@ function OrderCard({
             {placedTime} · {order.payment_mode}
           </p>
         </div>
-        <Badge variant={index === 3 ? "success" : "primary"}>{step}</Badge>
+        <Badge variant={index === steps.length - 1 ? "success" : "primary"}>
+          {step}
+        </Badge>
       </div>
 
       {/* Status stepper */}
       <div className="flex items-center px-4 py-4">
-        {ORDER_STEPS.map((label, i) => {
+        {steps.map((label, i) => {
           const Icon = STEP_ICONS[i];
           const done = i <= index;
           return (
@@ -173,7 +175,7 @@ function OrderCard({
                   {label}
                 </span>
               </div>
-              {i < ORDER_STEPS.length - 1 && (
+              {i < steps.length - 1 && (
                 <span
                   className={cn(
                     "-mt-4 h-0.5 flex-1 rounded",

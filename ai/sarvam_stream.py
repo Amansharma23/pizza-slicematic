@@ -101,7 +101,7 @@ class SttSession:
 
 
 @asynccontextmanager
-async def stt_session(language_code: str = "hi-IN"):
+async def stt_session(language_code: str = "unknown"):
     # high_vad_sensitivity alone already fires fast — live calibration showed
     # END_SPEECH triggering on ordinary mid-sentence pauses, before any
     # trailing silence even started. Tightening the fine-grained frame-count
