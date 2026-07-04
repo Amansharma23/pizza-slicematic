@@ -283,6 +283,11 @@ export function priceCart(
 // Places the whole cart. Server re-validates + writes one orders_log block per
 // line (core.persistence). payment_mode: "1"/"Cash" (COD & Cash) or "3"/"UPI".
 
+/** The only three order channels — enforced server-side too (api/routes.py
+ *  checkout_cart). "online" is the customer app's default; the staff kiosk
+ *  sends "dine_in"/"takeaway" (see components/staff/pos-payment.tsx). */
+export type OrderChannel = "online" | "dine_in" | "takeaway";
+
 export interface CheckoutPayload {
   user_id: string;
   name: string;
@@ -290,8 +295,8 @@ export interface CheckoutPayload {
   payment_mode: string;
   /** Delivery address line — required by the UI for delivery orders. */
   address: string;
-  /** Order channel — server default "online"; the staff POS sends "store". */
-  type?: string;
+  /** Order channel — server default "online" if omitted. */
+  type?: OrderChannel;
   lines: CartLinePayload[];
 }
 
@@ -338,8 +343,7 @@ export interface UserOrder {
   customer_phone?: string;
   delivery_address?: string | null;
   source?: string;
-  /** "online" today; reserved for a future staff-kiosk "in-store" value. */
-  type?: string | null;
+  type?: OrderChannel | null;
   preparing_at?: string | null;
   ready_at?: string | null;
   out_for_delivery_at?: string | null;
@@ -368,7 +372,7 @@ export function getOrdersByPhone(phone: string): Promise<OrdersResponse> {
  *  every order for now; per-rider assignment arrives with the authorization
  *  step). Optional type/status filter the same way the backend does. */
 export function getRecentOrders(filters?: {
-  type?: string;
+  type?: OrderChannel;
   status?: string;
 }): Promise<OrdersResponse> {
   const params = new URLSearchParams();

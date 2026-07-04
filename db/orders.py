@@ -8,11 +8,17 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 from db import postgres as local_postgres
 from db.client import execute_query, get_client
 
 log = logging.getLogger(__name__)
+
+# The only three order channels — enforced at the API boundary in
+# api/routes.py (checkout_cart); this alias is a static-typing mirror of that
+# same set for every function here that accepts or filters by `type`.
+OrderType = Literal["online", "dine_in", "takeaway"]
 
 # Kitchen: received -> preparing -> ready_for_pickup. Delivery:
 # ready_for_pickup -> out_for_delivery -> delivered. Sequential only — one
@@ -93,7 +99,7 @@ def create_order(
     language: str | None = None,
     status: str = "received",
     delivery_address: str | None = None,
-    type: str = "online",
+    type: OrderType = "online",
 ) -> str:
     """Create ONE order row for an API/frontend cart (DB is the source of truth
     for these — they are NOT written to orders_log.txt).
@@ -240,7 +246,10 @@ def get_delivery_stats() -> dict:
 
 
 def list_orders_by_user(
-    user_id: str, limit: int = 50, type: str | None = None, status: str | None = None
+    user_id: str,
+    limit: int = 50,
+    type: OrderType | None = None,
+    status: str | None = None,
 ) -> list[dict]:
     """Return a user's orders, newest first. Empty list if the DB is absent."""
     if local_postgres.is_enabled():
@@ -261,7 +270,7 @@ def list_orders_by_user(
 
 
 def list_recent_orders(
-    limit: int = 100, type: str | None = None, status: str | None = None
+    limit: int = 100, type: OrderType | None = None, status: str | None = None
 ) -> list[dict]:
     """ALL recent orders, newest first — the delivery rider's work queue.
 
@@ -282,7 +291,10 @@ def list_recent_orders(
 
 
 def list_orders_by_phone(
-    phone: str, limit: int = 50, type: str | None = None, status: str | None = None
+    phone: str,
+    limit: int = 50,
+    type: OrderType | None = None,
+    status: str | None = None,
 ) -> list[dict]:
     """Return orders for a phone number, newest first (interim user filter until
     real auth lands and everything keys on user_id). Empty if the DB is absent."""
