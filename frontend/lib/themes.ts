@@ -21,9 +21,9 @@ export const THEMES: ThemeMeta[] = [
   {
     id: "brand",
     label: "Signature",
-    description: "Ink & sage — the SliceMatic house palette.",
-    scheme: "dark",
-    swatch: { primary: "#479761", accent: "#cebc81", background: "#19181a" },
+    description: "Red, navy & white — the SliceMatic house palette.",
+    scheme: "light",
+    swatch: { primary: "#e31837", accent: "#0c2340", background: "#ffffff" },
   },
   {
     id: "midnight",
@@ -48,7 +48,7 @@ export const THEMES: ThemeMeta[] = [
   },
 ];
 
-export const DEFAULT_THEME: ThemeId = "brand";
+export const DEFAULT_THEME: ThemeId = "midnight";
 export const THEME_STORAGE_KEY = "slicematic-theme";
 
 export function isThemeId(value: string | null | undefined): value is ThemeId {

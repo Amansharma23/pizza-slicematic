@@ -10,46 +10,47 @@
  * ------------------------------------------------------------------ */
 
 /* Default palette = Signature (SliceMatic house palette).
- * Five brand colors + tints only, no pure white/black. Ink dominates every
- * surface; sage is the single dominant accent/CTA; sand is a sparing secondary
- * highlight; plum is rare emphasis; stone is muted text/dividers.
- * (Contrast checked AA: fg 14.5:1, stone 6.98:1, ink-on-sage 4.95:1 on ink.) */
+ * Domino's-style — bold red/blue/white fast-food branding. Clean white
+ * dominates every surface; fire-engine red is the single dominant
+ * accent/CTA ("Order Now", "Add to Cart"); navy blue is a strong
+ * contrast/nav highlight (header, tab bar); light grey carries
+ * cards/tags/secondary surfaces; a slightly darker grey handles dividers. */
 :root,
 [data-theme="brand"] {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --background: #19181a;          /* ink — dominant surface */
-  --backdrop: #100f11;            /* desktop gutters behind the phone frame */
-  --foreground: #ede8e2;          /* warm off-white tint (no pure white) */
+  --background: #ffffff;          /* clean white — dominant surface */
+  --backdrop: #eef0f3;            /* desktop gutters behind the phone frame */
+  --foreground: #1a1a1a;          /* near-black text */
 
-  --card: #201f22;               /* raised ink surface */
-  --card-foreground: #ede8e2;
+  --card: #ffffff;                /* white card */
+  --card-foreground: #1a1a1a;
 
-  --surface: #201f22;            /* header, composer, tab bar */
-  --surface-2: #2a282c;          /* chips, inputs */
+  --surface: #ffffff;             /* composer, tab bar */
+  --surface-2: #f2f2f2;           /* chips, inputs — light grey tint */
 
-  --primary: #479761;            /* sage — the one dominant accent / CTA */
-  --primary-foreground: #19181a; /* dark ink text on sage */
-  --secondary: #cebc81;          /* sand — secondary accent / highlight */
-  --secondary-foreground: #19181a;
-  --accent: #cebc81;             /* sand — sparing (pay / highlight) */
-  --accent-foreground: #19181a;
+  --primary: #e31837;             /* fire-engine red — the one dominant accent / CTA */
+  --primary-foreground: #ffffff;  /* white text on red */
+  --secondary: #f2f2f2;           /* light grey — secondary surfaces / tags */
+  --secondary-foreground: #1a1a1a;
+  --accent: #0c2340;              /* navy blue — strong contrast / nav highlight */
+  --accent-foreground: #ffffff;
 
-  --muted: #232125;
-  --muted-foreground: #b19f9e;   /* stone — muted text / disabled */
+  --muted: #f2f2f2;               /* light grey — muted panels */
+  --muted-foreground: #6b6b6b;    /* muted text */
 
-  --border: #38332f;             /* warm divider (stone-tinted ink) */
-  --input: #38332f;
-  --ring: #479761;               /* sage focus ring */
+  --border: #e0e0e0;              /* light divider */
+  --input: #e0e0e0;
+  --ring: #e31837;                /* red focus ring */
 
-  --success: #479761;            /* sage — positive states */
-  --destructive: #a16e83;        /* plum — emphasis/error (palette has no red) */
-  --destructive-foreground: #19181a;
+  --success: #0c2340;             /* navy — positive/confirmed states */
+  --destructive: #b3122a;         /* deeper red — error (distinct from CTA) */
+  --destructive-foreground: #ffffff;
 
   /* AI/user chat bubble tints */
-  --bubble-ai: #201f22;
-  --bubble-user: #479761;        /* sage — dominant accent */
-  --bubble-user-foreground: #19181a;
+  --bubble-ai: #f2f2f2;
+  --bubble-user: #e31837;         /* fire-engine red — dominant accent */
+  --bubble-user-foreground: #ffffff;
 }
 
 /* Midnight (dark, amber) — alternate */
