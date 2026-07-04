@@ -17,6 +17,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.admin_routes import router as admin_router
+from api.staff_routes import router as staff_router
 from ai.routers.chat import router as chat_router
 from ai.routers.voice import router as voice_router
 from api.routes import router as api_router
@@ -67,6 +69,8 @@ app.add_middleware(
 )
 
 app.include_router(api_router)  # /api/* (menu, summary, order, analytics, ...)
+app.include_router(admin_router)  # /admin/* protected owner/ops APIs
+app.include_router(staff_router)  # /staff/* protected kitchen/backstage APIs
 app.include_router(chat_router)  # /chat
 app.include_router(voice_router)  # /voice/transcribe, /voice/respond, /voice/synthesize
 

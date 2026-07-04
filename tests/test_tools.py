@@ -46,14 +46,14 @@ def test_calculate_single_line(ids):
     assert s.pricing["n_lines"] == 1
 
 
-def test_calculate_applies_discount_at_qty5(ids):
+def test_calculate_does_not_auto_discount_at_qty5(ids):
     b, p, t = ids
     out = tools.execute_tool(
         "calculate_order_price",
         {"items": [{"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 5}]},
         None,
     )
-    assert "discount" in out.lower()
+    assert "discount" not in out.lower()
 
 
 def test_calculate_multi_line(ids):

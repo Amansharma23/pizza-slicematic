@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from db import postgres as local_postgres
 from db.client import execute_query, get_client
 
 log = logging.getLogger(__name__)
@@ -81,6 +82,23 @@ def create_order(
     Unlike the best-effort mirror, this RAISES on failure — the caller must
     surface it, since there is no .txt fallback for API orders.
     """
+    if local_postgres.is_enabled():
+        return local_postgres.create_order(
+            user_id=user_id,
+            name=name,
+            phone=phone,
+            items=items,
+            subtotal=subtotal,
+            discount=discount,
+            gst=gst,
+            total=total,
+            payment_mode=payment_mode,
+            source=source,
+            session_id=session_id,
+            language=language,
+            status=status,
+        )
+
     client = get_client()
     if client is None:
         raise RuntimeError("Order database is not configured.")
@@ -108,6 +126,9 @@ def create_order(
 
 def list_orders_by_user(user_id: str, limit: int = 50) -> list[dict]:
     """Return a user's orders, newest first. Empty list if the DB is absent."""
+    if local_postgres.is_enabled():
+        return local_postgres.list_orders_by_user(user_id, limit)
+
     client = get_client()
     if client is None:
         return []

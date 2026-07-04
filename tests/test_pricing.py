@@ -12,15 +12,15 @@ def _items():
 
 
 def test_worked_example_qty5_exact():
-    """PRD reference: 677 unit, qty 5 -> total 3594.87, discount applies."""
+    """Coupon-only default: no automatic quantity discount is applied."""
     base, pizza, topping = _items()
     bill = pricing.compute_bill(base, pizza, topping, 5)
     assert bill.unit_price == 677.00
     assert bill.subtotal == 3385.00
-    assert bill.discount == 338.50
-    assert bill.taxable == 3046.50
-    assert bill.gst == 548.37
-    assert bill.total == 3594.87
+    assert bill.discount == 0.0
+    assert bill.taxable == 3385.00
+    assert bill.gst == 609.30
+    assert bill.total == 3994.30
 
 
 def test_no_discount_below_threshold():
@@ -35,8 +35,7 @@ def test_no_discount_below_threshold():
 
 def test_discount_exactly_at_threshold():
     base, pizza, topping = _items()
-    bill = pricing.compute_bill(base, pizza, topping, 5)
-    assert bill.discount > 0
+    assert pricing.compute_bill(base, pizza, topping, 5).discount == 0.0
 
 
 def test_single_pizza():
@@ -67,9 +66,28 @@ def test_all_money_two_decimals():
 def test_discount_threshold_is_configurable():
     base, pizza, topping = _items()
     original = pricing.get_discount_threshold()
+    original_rate = pricing.get_discount_rate()
     try:
+        pricing.set_discount_rate(0.10)
         pricing.set_discount_threshold(3)
         assert pricing.compute_bill(base, pizza, topping, 3).discount > 0
         assert pricing.compute_bill(base, pizza, topping, 2).discount == 0.0
     finally:
         pricing.set_discount_threshold(original)
+        pricing.set_discount_rate(original_rate)
+
+
+def test_gst_rate_is_configurable():
+    old_rate = pricing.get_gst_rate()
+    try:
+        pricing.set_gst_rate(0.05)
+        bill = pricing.compute_bill(
+            MenuItem("B1", "Base", 100.0),
+            MenuItem("P1", "Pizza", 100.0),
+            MenuItem("T1", "Top", 0.0),
+            1,
+        )
+        assert bill.gst == 10.0
+        assert bill.total == 210.0
+    finally:
+        pricing.set_gst_rate(old_rate)
