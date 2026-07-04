@@ -412,7 +412,7 @@ def create_staff_order(
                     "gst": gst,
                     "total": total,
                     "payment_mode": payment_mode,
-                    "status": "Confirmed",
+                    "status": "received",
                     "type": "pos",
                 }
             )
@@ -993,8 +993,36 @@ def list_notifications(limit: int = 100) -> dict:
     return {"logs": _rows(execute_query(_client().table("notification_logs").select("*").order("created_at", desc=True).limit(limit)))}
 
 
-def create_mock_notification(*, channel: str, recipient: str, template_name: str, payload: dict, performed_by: str) -> dict:
-    return _one(execute_query(_client().table("notification_logs").insert({"channel": channel, "provider": "mock", "recipient": recipient, "template_name": template_name, "payload": payload, "status": "mocked", "created_by": performed_by, "sent_at": _now()})))
+def create_mock_notification(
+    *,
+    channel: str,
+    recipient: str,
+    template_name: str,
+    payload: dict,
+    performed_by: str,
+    related_entity_type: str | None = None,
+    related_entity_id: str | None = None,
+) -> dict:
+    return _one(
+        execute_query(
+            _client()
+            .table("notification_logs")
+            .insert(
+                {
+                    "channel": channel,
+                    "provider": "mock",
+                    "recipient": recipient,
+                    "template_name": template_name,
+                    "payload": payload,
+                    "status": "mocked",
+                    "created_by": performed_by,
+                    "related_entity_type": related_entity_type,
+                    "related_entity_id": related_entity_id,
+                    "sent_at": _now(),
+                }
+            )
+        )
+    )
 
 
 def get_settings() -> dict:
