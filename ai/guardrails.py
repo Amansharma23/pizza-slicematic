@@ -17,6 +17,7 @@ import logging
 import re
 from dataclasses import dataclass
 
+from ai import observability
 from core import validation as v
 
 log = logging.getLogger(__name__)
@@ -110,12 +111,22 @@ def _heuristic(text: str) -> str | None:
     return None  # uncertain -> classifier
 
 
-def _classify_llm(text: str) -> str:
-    """Cheap-model classification. Fails OPEN (returns SAFE) on any error."""
+def _classify_llm(text: str, session_id: str | None = None) -> str:
+    """Cheap-model classification. Fails OPEN (returns SAFE) on any error.
+
+    Tagged with the session (when known) so this call shows up grouped with
+    its conversation in Langfuse instead of as an orphaned trace — previously
+    the one LLM call in this module that carried no session metadata at all.
+    """
     try:
         from ai.config import get_settings
         from ai.llm import get_client
 
+        lf = (
+            observability.trace_kwargs(session_id, "guardrail-classify")
+            if session_id
+            else {}
+        )
         resp = get_client().chat.completions.create(
             model=get_settings().guardrail_model,
             messages=[
@@ -124,6 +135,7 @@ def _classify_llm(text: str) -> str:
             ],
             temperature=0,
             max_tokens=4,
+            **lf,
         )
         label = (resp.choices[0].message.content or "").strip().upper()
         for cat in ("INJECTION", "ABUSE", "OFFTOPIC"):
@@ -135,13 +147,30 @@ def _classify_llm(text: str) -> str:
         return "SAFE"
 
 
-def check_input(text: str | None) -> InputCheck:
-    """Screen a customer message before it reaches the agent."""
+def check_input(text: str | None, session_id: str | None = None) -> InputCheck:
+    """Screen a customer message before it reaches the agent.
+
+    session_id is optional (backward compatible with any caller that doesn't
+    have one yet) but every real caller (chat.py, voice_call.py) passes it —
+    it's what makes the classifier call above traceable per-conversation and
+    what the guardrail_category score below is attached to.
+    """
     if not text or not text.strip():
         return InputCheck(ok=True, category="SAFE")
     category = _heuristic(text)
     if category is None:
-        category = _classify_llm(text)
+        category = _classify_llm(text, session_id)
+    if session_id:
+        # Auto-scoring: every category (SAFE included) so a block RATE is
+        # computable, with the actual message text attached for anything
+        # blocked — the "why was this flagged" drill-down in Langfuse.
+        observability.score_session(
+            session_id,
+            "guardrail_category",
+            category,
+            data_type="CATEGORICAL",
+            comment=text[:200] if category != "SAFE" else None,
+        )
     if category in _REDIRECTS:
         return InputCheck(ok=False, category=category, message=_REDIRECTS[category])
     return InputCheck(ok=True, category="SAFE")

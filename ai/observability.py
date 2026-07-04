@@ -61,3 +61,32 @@ def flush() -> None:
         client.flush()
     except Exception as exc:
         log.debug("Langfuse flush failed: %s", exc)
+
+
+def score_session(
+    session_id: str,
+    name: str,
+    value,
+    *,
+    data_type: str | None = None,
+    comment: str | None = None,
+) -> None:
+    """Attach an eval score to every trace in a session (auto-scoring: the
+    first building block for the eval dashboard). Session-level rather than
+    trace-level on purpose — turns run through a FastAPI threadpool (chat) or
+    asyncio.to_thread (voice), where chasing an OTel "current trace" context
+    is fragile; the session_id tagging every turn already gets via
+    trace_kwargs() is a stable handle regardless of which thread scored it."""
+    client = get_langfuse()
+    if client is None:
+        return
+    try:
+        client.create_score(
+            session_id=session_id,
+            name=name,
+            value=value,
+            data_type=data_type,
+            comment=comment,
+        )
+    except Exception as exc:
+        log.debug("Langfuse score '%s' failed: %s", name, exc)

@@ -63,7 +63,7 @@ def test_barge_in_discards_stale_reply_and_preserves_history_order(monkeypatch):
     monkeypatch.setattr(
         guardrails,
         "check_input",
-        lambda text: guardrails.InputCheck(ok=True, category="SAFE"),
+        lambda text, session_id=None: guardrails.InputCheck(ok=True, category="SAFE"),
     )
     monkeypatch.setattr(voice_call, "_persist_turn", lambda *a, **k: None)
     monkeypatch.setattr(

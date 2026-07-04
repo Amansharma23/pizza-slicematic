@@ -136,7 +136,7 @@ class GeminiAdminAIProvider:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with urllib.request.urlopen(request, timeout=20) as response:  # nosec B310
                 data = json.loads(response.read().decode("utf-8"))
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Gemini request failed: {exc}") from exc

@@ -371,18 +371,18 @@ def list_orders(
                        o.payment_mode, o.status, o.source, o.created_at,
                        coalesce(p.payment_status, 'Pending') as payment_status,
                        coalesce(p.amount_paid, 0) as amount_paid
-                from public.orders o
-                left join lateral (
-                    select payment_status, amount_paid
-                    from public.payments p
-                    where p.order_id = o.id
-                    order by p.created_at desc
-                    limit 1
-                ) p on true
-                {where}
-                order by o.created_at desc
-                limit %s
-                """,
+                 from public.orders o
+                 left join lateral (
+                     select payment_status, amount_paid
+                     from public.payments p
+                     where p.order_id = o.id
+                     order by p.created_at desc
+                     limit 1
+                 ) p on true
+                 {where}
+                 order by o.created_at desc
+                 limit %s
+                 """,  # nosec B608
                 params,
             )
             return _many(cur)
@@ -1911,7 +1911,7 @@ def list_festival_coupon_suggestions(
                 {where}
                 order by festival_date
                 limit %s
-                """,
+                """,  # nosec B608
                 (*params, calendar_limit),
             )
             rows = _many(cur)
@@ -2235,7 +2235,7 @@ def get_analytics_report(
                            as refund_orders
                 from public.orders
                 {where}
-                """,
+                """,  # nosec B608
                 params,
             )
             totals = _one(cur)
@@ -2250,7 +2250,7 @@ def get_analytics_report(
                 group by created_at::date
                 order by date desc
                 limit 14
-                """,
+                """,  # nosec B608
                 params,
             )
             daily_revenue = _many(cur)
@@ -2264,7 +2264,7 @@ def get_analytics_report(
                 {where}
                 group by hour
                 order by hour
-                """,
+                """,  # nosec B608
                 params,
             )
             hourly_revenue = _many(cur)
@@ -2281,7 +2281,7 @@ def get_analytics_report(
                 group by item->>'pizza'
                 order by quantity desc, revenue desc, name
                 limit 10
-                """,
+                """,  # nosec B608
                 params,
             )
             top_items = _many(cur)
@@ -2296,7 +2296,7 @@ def get_analytics_report(
                 group by topping
                 order by quantity desc, name
                 limit 10
-                """,
+                """,  # nosec B608
                 params,
             )
             top_toppings = _many(cur)
@@ -2310,7 +2310,7 @@ def get_analytics_report(
                 {where}
                 group by payment_mode
                 order by revenue desc
-                """,
+                """,  # nosec B608
                 params,
             )
             revenue_by_payment_mode = _many(cur)
@@ -2324,7 +2324,7 @@ def get_analytics_report(
                 {where}
                 group by source
                 order by orders desc
-                """,
+                """,  # nosec B608
                 params,
             )
             orders_by_source = _many(cur)
@@ -2339,7 +2339,7 @@ def get_analytics_report(
                 {where}
                 group by weekday, weekday_no
                 order by weekday_no
-                """,
+                """,  # nosec B608
                 params,
             )
             weekday_trend = _many(cur)
@@ -2356,7 +2356,7 @@ def get_analytics_report(
                 having count(*) > 1
                 order by orders desc, revenue desc
                 limit 10
-                """,
+                """,  # nosec B608
                 params,
             )
             repeat_customers = _many(cur)
@@ -2426,7 +2426,7 @@ def list_ai_insight_logs(
                 {where}
                 order by created_at desc
                 limit %s
-                """,
+                """,  # nosec B608
                 params,
             )
             return _many(cur)

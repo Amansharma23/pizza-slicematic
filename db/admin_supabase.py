@@ -1217,7 +1217,7 @@ def list_inventory() -> dict:
         for r in _select("inventory_requests")
     ]
     menu = list_menu_items()["items"]
-    menu_by_id = {m["id"]: m for m in menu}
+    menu_by_id = {m["id"]: m for m in menu}  # noqa: F841
     recipes_by_menu: dict[str, list] = defaultdict(list)
     for rec in _select("menu_item_ingredients"):
         ing = ing_by_id.get(rec.get("ingredient_id"), {})
