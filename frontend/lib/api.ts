@@ -326,6 +326,12 @@ export interface UserOrder {
   customer_phone?: string;
   delivery_address?: string | null;
   source?: string;
+  /** "online" today; reserved for a future staff-kiosk "in-store" value. */
+  type?: string | null;
+  preparing_at?: string | null;
+  ready_at?: string | null;
+  out_for_delivery_at?: string | null;
+  delivered_at?: string | null;
 }
 
 export interface OrdersResponse {
@@ -346,10 +352,59 @@ export function getOrdersByPhone(phone: string): Promise<OrdersResponse> {
   return getJSON<OrdersResponse>(`/api/orders?phone=${encodeURIComponent(phone)}`);
 }
 
-/** ALL recent orders — the delivery rider's work queue (every rider sees every
- *  order for now; per-rider assignment arrives with the authorization step). */
-export function getRecentOrders(): Promise<OrdersResponse> {
-  return getJSON<OrdersResponse>("/api/orders/recent");
+/** ALL recent orders — the kitchen/delivery work queues (every rider sees
+ *  every order for now; per-rider assignment arrives with the authorization
+ *  step). Optional type/status filter the same way the backend does. */
+export function getRecentOrders(filters?: {
+  type?: string;
+  status?: string;
+}): Promise<OrdersResponse> {
+  const params = new URLSearchParams();
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.status) params.set("status", filters.status);
+  const qs = params.toString();
+  return getJSON<OrdersResponse>(`/api/orders/recent${qs ? `?${qs}` : ""}`);
+}
+
+export interface OrderStatusResponse {
+  ok: boolean;
+  order?: UserOrder;
+  errors?: Record<string, string>;
+}
+
+/** Advance one order one step (kitchen: preparing/ready_for_pickup; delivery:
+ *  out_for_delivery/delivered) — db_orders.update_order_status enforces the
+ *  legal sequence server-side, so an illegal call just comes back as an error. */
+export function updateOrderStatus(
+  orderNo: string,
+  status: string,
+  token: string
+): Promise<OrderStatusResponse> {
+  return postJSON<OrderStatusResponse>(
+    `/api/orders/${encodeURIComponent(orderNo)}/status`,
+    { status },
+    authHeader(token)
+  );
+}
+
+export interface DeliveryStatsOrder {
+  order_no: string;
+  delivered_at: string | null;
+  pickup_to_delivered_minutes: number | null;
+}
+
+export interface DeliveryStatsResponse {
+  ok: boolean;
+  delivered_today?: number;
+  orders?: DeliveryStatsOrder[];
+  errors?: Record<string, string>;
+}
+
+export function getDeliveryStats(token: string): Promise<DeliveryStatsResponse> {
+  return getJSON<DeliveryStatsResponse>(
+    "/api/orders/delivery-stats",
+    authHeader(token)
+  );
 }
 
 /* --------------------------- Voice -------------------------- */

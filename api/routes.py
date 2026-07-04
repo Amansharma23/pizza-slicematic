@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from api import security
 from core import analytics
 from core import menu as menu_mod
 from core import persistence, pricing
@@ -238,6 +239,28 @@ class CheckoutReq(BaseModel):
 class ConfigReq(BaseModel):
     discount_rate: float
     discount_threshold: int = 5
+
+
+class OrderStatusReq(BaseModel):
+    status: str
+
+
+# Kitchen advances received->preparing->ready_for_pickup; delivery advances
+# ready_for_pickup->out_for_delivery->delivered. Both share one endpoint (the
+# sequence itself is enforced by db/orders.py's state machine), but the
+# sequence check alone doesn't stop kitchen from also setting delivery's
+# statuses (or vice versa) — e.g. a kitchen token can legally advance
+# ready_for_pickup -> out_for_delivery since that IS the correct next step,
+# just not kitchen's job. This maps each role to the statuses it may actually
+# set; admin may set any of them.
+_ROLE_ALLOWED_STATUSES = {
+    "kitchen_staff": {"preparing", "ready_for_pickup"},
+    "delivery": {"out_for_delivery", "delivered"},
+}
+_kitchen_or_delivery = Depends(
+    security.require_role("kitchen_staff", "delivery", "admin")
+)
+_delivery = Depends(security.require_role("delivery", "admin"))
 
 
 # --------------------------------------------------------------------------- #
@@ -481,6 +504,45 @@ def list_orders(user_id: str = "", phone: str = "", type: str = "", status: str 
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
     return {"ok": True, "orders": orders}
+
+
+@router.post("/orders/{order_no}/status")
+def update_order_status(
+    order_no: str, req: OrderStatusReq, claims: dict = _kitchen_or_delivery
+):
+    """Advance one order one step (kitchen: preparing/ready_for_pickup;
+    delivery: out_for_delivery/delivered). db_orders.update_order_status
+    enforces the legal-transition SEQUENCE; _ROLE_ALLOWED_STATUSES enforces
+    which role may set which status (the sequence check alone would let
+    kitchen legally set delivery's statuses and vice versa)."""
+    role = claims.get("role")
+    allowed = _ROLE_ALLOWED_STATUSES.get(role)
+    if allowed is not None and req.status not in allowed:
+        return {
+            "ok": False,
+            "errors": {"status": f"Your role can't set status '{req.status}'."},
+        }
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+    try:
+        order = db_orders.update_order_status(order_no, req.status)
+    except ValueError as exc:
+        return {"ok": False, "errors": {"status": str(exc)}}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+    return {"ok": True, "order": order}
+
+
+@router.get("/orders/delivery-stats")
+def delivery_stats(claims: dict = _delivery):
+    """Today's delivered count + each delivered order's pickup->delivered
+    minutes, for the delivery Profile tab."""
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+    try:
+        return {"ok": True, **db_orders.get_delivery_stats()}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
 
 
 @router.get("/config")
