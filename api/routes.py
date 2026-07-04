@@ -251,6 +251,14 @@ class CartReq(BaseModel):
     lines: list[CartLineReq] = []
 
 
+# The only three order channels: "online" (customer app, the default),
+# "dine_in"/"takeaway" (staff kiosk — see pos-payment.tsx). Enforced below in
+# checkout_cart, not as a Pydantic Literal, so a bad value comes back as a
+# normal {"ok": false, "errors": {...}} business error like every other field
+# here, instead of a raw FastAPI 422.
+_VALID_ORDER_TYPES = {"online", "dine_in", "takeaway"}
+
+
 class CheckoutReq(BaseModel):
     user_id: str = ""
     name: str = ""
@@ -447,6 +455,10 @@ def checkout_cart(req: CheckoutReq):
         errors["phone"] = phone
     if not ok_pay:
         errors["payment_mode"] = mode
+    if req.type not in _VALID_ORDER_TYPES:
+        errors["type"] = (
+            f"Order type must be one of: {', '.join(sorted(_VALID_ORDER_TYPES))}."
+        )
     if not req.lines:
         errors["lines"] = "Your order is empty."
 
