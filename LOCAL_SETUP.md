@@ -61,12 +61,12 @@ Which keys you actually need depends on what you want to run:
 | **Gradio app (7860)** | *none* | Works out of the box. |
 | **Text chat** (frontend + `/chat`) | `OPENROUTER_API_KEY` | Chat can't reach the LLM. |
 | **Voice** (`/voice/*`) | `DEEPGRAM_API_KEY` | Voice STT/TTS disabled; chat still works. |
-| **Orders/session mirror** | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Optional — best-effort; `.txt` log stays primary. |
+| **Supabase DB-backed app/admin** | `DATABASE_PROVIDER=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Required for auth, orders, admin, staff, inventory, and settings. |
 | **Tracing** | `LANGFUSE_*` | Optional — no-op if absent. |
 
 Models default to `google/gemini-2.5-flash` with fallbacks (see `.env.example`).
-Everything except `OPENROUTER_API_KEY` (for chat) and `DEEPGRAM_API_KEY` (for voice)
-is optional — the app degrades gracefully.
+Everything except the Supabase DB settings for app/admin data,
+`OPENROUTER_API_KEY` for chat, and `DEEPGRAM_API_KEY` for voice is optional.
 
 ### b) Frontend — `frontend/.env.local` (optional)
 The frontend **defaults to `http://localhost:7861` in code**, so no file is needed

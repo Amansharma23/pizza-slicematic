@@ -47,7 +47,7 @@ def test_calculate_single_line(ids):
     assert s.pricing["grand_total"] == payload["cart"]["total"]
 
 
-def test_calculate_applies_discount_at_qty5(ids):
+def test_calculate_does_not_auto_discount_at_qty5(ids):
     b, p, t = ids
     out = tools.execute_tool(
         "calculate_order_price",
@@ -55,7 +55,7 @@ def test_calculate_applies_discount_at_qty5(ids):
         None,
     )
     payload = json.loads(out)
-    assert payload["cart"]["discount"] > 0
+    assert payload["cart"]["discount"] == 0.0
 
 
 def test_calculate_multi_topping_sums_menu_prices(ids):

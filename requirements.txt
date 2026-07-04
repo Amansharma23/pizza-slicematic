@@ -197,6 +197,10 @@ protobuf==7.35.1
     # via
     #   googleapis-common-protos
     #   opentelemetry-proto
+psycopg==3.3.4
+    # via pizzaflow
+psycopg-binary==3.3.4 ; implementation_name != 'pypy'
+    # via psycopg
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pydantic==2.13.4
@@ -220,6 +224,7 @@ pygments==2.20.0
     #   pytest
     #   rich
 pyjwt==2.13.0
+    # via supabase-auth
     # via
     #   pizzaflow
     #   supabase-auth
@@ -295,6 +300,7 @@ typing-extensions==4.15.0
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+    #   psycopg
     #   pydantic
     #   pydantic-core
     #   pyee
@@ -306,7 +312,9 @@ typing-inspection==0.4.2
     #   fastapi
     #   pydantic
 tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
-    # via pandas
+    # via
+    #   pandas
+    #   psycopg
 urllib3==2.7.0
     # via requests
 uvicorn==0.49.0

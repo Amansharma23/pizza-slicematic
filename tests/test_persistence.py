@@ -29,7 +29,7 @@ def test_line_has_all_fields_in_order():
     assert parts[4] == "Cheese Burst"
     assert parts[7] == "677.00"  # unit_price
     assert parts[8] == "5"  # quantity
-    assert parts[12] == "3594.87"  # total
+    assert parts[12] == "3994.30"  # total
     assert parts[13] == "UPI"
 
 

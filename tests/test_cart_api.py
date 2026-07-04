@@ -57,7 +57,7 @@ def test_single_line_three_toppings_matches_core(client):
     assert res["cart"]["total"] == exp.total
 
 
-def test_qty_five_applies_discount(client):
+def test_qty_five_has_no_auto_discount(client):
     c, m = client
     base, pizza, top = m.bases[0], m.pizzas[0], m.toppings[0]
     payload = {
@@ -71,7 +71,7 @@ def test_qty_five_applies_discount(client):
         ]
     }
     line = c.post("/api/cart/price", json=payload).json()["lines"][0]
-    assert line["discount"] > 0
+    assert line["discount"] == 0
 
 
 def test_qty_four_no_discount(client):
