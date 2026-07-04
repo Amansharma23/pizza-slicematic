@@ -321,21 +321,36 @@ def test_checkout_db_unavailable_surfaces_error(client, monkeypatch):
     assert "db" in res["errors"]
 
 
-def test_list_orders_requires_user_id(client):
+def test_list_orders_requires_a_filter(client):
     c, _ = client
     res = c.get("/api/orders").json()
     assert res["ok"] is False
-    assert "user_id" in res["errors"]
+    assert "filter" in res["errors"]
 
 
 def test_list_orders_returns_user_rows(client, monkeypatch):
     c, _ = client
 
     class _DB:
-        def list_orders_by_user(self, user_id, limit=50):
+        def list_orders_by_user(self, user_id, limit=50, type=None, status=None):
             return [{"order_no": "SM-20260702-0001", "user_id": user_id}]
 
     monkeypatch.setattr(routes, "db_orders", _DB())
     res = c.get("/api/orders", params={"user_id": "u-1"}).json()
     assert res["ok"] is True
     assert res["orders"][0]["order_no"] == "SM-20260702-0001"
+
+
+def test_list_orders_by_phone(client, monkeypatch):
+    """Interim per-user filter (until real auth): ?phone= lists that phone's
+    orders and wins over user_id when both are sent."""
+    c, _ = client
+
+    class _DB:
+        def list_orders_by_phone(self, phone, limit=50, type=None, status=None):
+            return [{"order_no": "SM-20260703-0001", "customer_phone": phone}]
+
+    monkeypatch.setattr(routes, "db_orders", _DB())
+    res = c.get("/api/orders", params={"phone": "9876543210", "user_id": "u-1"}).json()
+    assert res["ok"] is True
+    assert res["orders"][0]["customer_phone"] == "9876543210"

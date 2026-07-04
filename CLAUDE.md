@@ -36,18 +36,47 @@ Detailed checklist + decisions: `docs/STAGE3_PLAN.md`. API reference: `docs/API.
 **Done (chat + voice backend complete, verified live):**
 - `core/` unchanged; **`ai/`** layer added: `config`, `llm` (OpenRouter via OpenAI SDK +
   Langfuse auto-tracing drop-in), `session` (in-memory + Supabase mirror), `language` (en/hi),
-  `tools` (5: get_menu, calculate_order_price, validate_customer, confirm_and_save_order,
-  escalate_to_human → all call `core/`), `guardrails` (heuristics + cheap-LLM classifier, fail-open;
-  deterministic output), `agent` (tool loop ≤5 rounds, app-level fallback, warm persona @ temp 0.5),
-  `deepgram` (STT/TTS), `routers/chat.py` + `routers/voice.py`, `main.py` (FastAPI + CORS + /health).
+  `tools` (6 in `_DISPATCH`, all calling `core/`; the LLM sees a **stage-gated subset** via
+  `tools_for(session)`: get_customer_profile (hardcoded demo profile) + calculate_order_price
+  (multi-topping lines, JSON result) + escalate_to_human always; confirm_and_save_order only
+  after a priced, unsaved bill. get_menu/validate_customer exist but aren't exposed — the live
+  menu is embedded in the system prompt each turn), `guardrails` (heuristics + cheap-LLM
+  classifier, fail-open; deterministic output), `agent` (tool loop ≤5 rounds, app-level fallback,
+  temp 0.2, OpenRouter reasoning disabled; **staged system prompt**: hard rules → output tags →
+  few-shot examples from the live menu → fenced MENU → per-stage CURRENT STEP
+  (building/payment/ordered/escalated, derived from session state); **UI injection**: bill JSON
+  `[BILL]…[/BILL]` + `[PAYMENT_OPTIONS]` (chat) and the localized save confirmation (both
+  channels) bypass the LLM), `deepgram` + `sarvam` (STT/TTS), `routers/chat.py` +
+  `routers/voice.py`, `main.py` (FastAPI + CORS + /health). Chat/voice orders are **Supabase-only**
+  (`db.orders.create_order`, no `.txt`); `[timing]` logs cover STT/TTS/LLM/agent.
 - **`db/`** additive Supabase: `orders` mirror, `sessions`, `messages`, `escalations` — all best-effort
   with transient-retry (`db/client.execute_query`). `.txt` log stays primary.
 - Supabase migrations **applied**: `0001_init_ai_schema.sql` (orders/sessions/messages),
   `0002_escalations.sql`, `0003_orders_user_and_number.sql` (adds `user_id`, DB-generated
-  `order_no`, relaxes per-line NOT NULL for multi-item carts). Run new migrations manually in the
+  `order_no`, relaxes per-line NOT NULL for multi-item carts), `0004_app_users.sql` (accounts +
+  roles + lockout, emp_id trigger, `orders.delivery_address`). Run new migrations manually in the
   SQL editor (no DDL via client).
+- **Authentication / user + role management (2026-07-03, verified live):** `app_users` table
+  (roles: `user` customer / `admin` / `staff` / `kitchen_staff` / `delivery`). Customers sign up +
+  sign in with **phone + 6-digit PIN**; employees with **DB-generated `EMP-xxx` + PIN** (created
+  from the admin panel); admin with **email + password** (NO public signup — seed once with
+  `uv run python scripts/seed_admin.py` from `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`). Backend
+  lives in **`api/` (NOT `ai/` — per instruction the ai/ package was untouched)**: `api/security.py`
+  (bcrypt hashes only, HS256 JWT `AUTH_JWT_SECRET`, 24 h TTL, `require_role()` dependency,
+  5-fails → 15-min lockout — mandatory for 6-digit PINs) + `api/auth.py` (`/api/auth/signup|login|
+  me|me/address|employees*`), included by `api/routes.py` so every mount gets it. Frontend:
+  `lib/auth-store.ts` (persisted zustand JWT+user) + a role gate in EACH route group's layout —
+  `(customer)` sign-in/up screens, `(staff)` + new `(kitchen)` kiosk logins, new `(delivery)`
+  phone-frame login + all-orders queue (`GET /api/orders/recent`, address shown via
+  `orders.delivery_address` sent at checkout), `(admin)` login + **employees panel** (create/reset
+  PIN/deactivate). `lib/user.ts` (hardcoded CURRENT_USER) is **deleted** — profile/checkout/orders
+  use the signed-in user; checkout **requires a saved address for delivery** (COD/UPI; pickup
+  exempt). **Known gap:** the chat tool `get_customer_profile` (in `ai/`, untouched) still returns
+  the demo profile, so chat/voice orders land under the demo phone, not the signed-in user — wire
+  the session to the authed user when next touching `ai/`.
 - Dev tooling: pre-commit (isort/black/ruff/bandit), Claude PostToolUse hook, CI `lint` job.
-- `postman/SliceMatic.postman_collection.json`, `docs/API.md`. **103 tests pass.**
+- `postman/SliceMatic.postman_collection.json`. **153 tests pass** (incl. 19 auth tests,
+  `tests/test_auth_api.py`, DB faked in-memory).
 
 **Run it** (full step-by-step for any human/LLM is in **`LOCAL_SETUP.md`** — 3 servers):
 - AI service (chat/voice + `/api/*`): `uv run uvicorn ai.main:app --port 7861` (docs at `/docs`)
@@ -58,26 +87,35 @@ Detailed checklist + decisions: `docs/STAGE3_PLAN.md`. API reference: `docs/API.
 **Env:** `.env` (gitignored) holds the keys; `.env.example` is the template. Models:
 `google/gemini-2.5-flash` + fallbacks `anthropic/claude-haiku-4.5`, `openai/gpt-4o-mini`.
 Optional `LANGFUSE_PROJECT_ID` → clickable Langfuse links on escalations. `AI_CORS_ORIGINS`
-for the Next.js origin.
+for the Next.js origin. Auth: `AUTH_JWT_SECRET` (dev default exists; REQUIRED for deploys) +
+`ADMIN_EMAIL`/`ADMIN_PASSWORD`/`ADMIN_NAME` for the one-time admin seed.
 
 **Step 6 — Next.js frontend: LARGELY BUILT** (in `frontend/`, see the "Stage-3 Frontend
 architecture" section). Done: design system + configurable palettes (default **Signature**),
 phone-frame demo presentation, customer **chat Home** (wired to `/chat`), **Menu** (2-per-row tiles →
 inline build sheet: pizza→base→1–3 toppings→qty, live-priced), inline **cart**, dedicated
 **checkout** (COD/Cash/UPI, simulated payment), **Orders** tab (simulated live tracking), **profile**
-(hardcoded user), global cart icon. Additive backend endpoints added for it: `POST /api/cart/price`
+(signed-in user + address management), global cart icon. Additive backend endpoints added for it: `POST /api/cart/price`
 and `POST /api/cart/checkout` (+ 14 tests). Design decisions were made with the **`ui-ux-pro-max`
 skill** (installed via `uipro init --ai claude`, gitignored under `.claude/skills/`, regenerable).
 
 **Next session — NOT done yet:**
-1. **Voice UI** on chat Home: MediaRecorder (`audio/webm;codecs=opus`), 3-min countdown, play
-   `audio/mpeg` from `/voice/synthesize`. The mic button is a disabled placeholder seam today.
-2. **Staff kiosk + Admin** surfaces are placeholder routes (`/staff`, `/admin`) — build them out.
-3. **Step 7 — deploy**: HF `Dockerfile` runs `app.py` (Gradio) on 7860; decide how to ship
-   `ai.main` + the Next.js app + update CI. Before any public deploy: **auth / rate-limiting** on
-   `/chat` and `/voice/*` (none yet), and real order-status (Orders tracking is client-simulated).
-4. Optional hardening: persist `tool`-role messages; rehydrate `history` on restart; **Redis** for
-   sessions if running >1 worker/instance.
+1. **Authorization + rate limiting** (authentication is DONE, this is the declared next step):
+   per-endpoint `require_role(...)` guards on `/chat`, `/voice/*`, `/api/cart/*`, `/api/orders*`
+   (make `GET /api/orders` derive the user from the JWT instead of `?phone=` — currently
+   enumerable), rate limits (strict on `/api/auth/login`, cost-cap on `/chat`+`/voice/*`, e.g.
+   slowapi), and server-side address enforcement on delivery checkouts.
+2. **Voice UI**: built (`lib/use-voice.ts` + `components/chat/call-panel.tsx` — MediaRecorder,
+   3-min countdown, TTS playback) but **DISABLED for this release** via `VOICE_ENABLED = false`
+   in `components/chat/composer.tsx` (hides the call button/panel only; backend `/voice/*` and
+   the hook are intact — flip the flag to re-enable, then polish/QA the call experience).
+3. **Staff kiosk POS + kitchen display + admin (beyond employees)** are gated placeholder routes
+   (`/staff`, `/kitchen`, `/admin`) — build the features out. Kitchen/delivery status actions can
+   replace the client-simulated Orders tracking.
+4. **Step 7 — deploy**: HF `Dockerfile` runs `app.py` (Gradio) on 7860; decide how to ship
+   `ai.main` + the Next.js app + update CI. Set a real `AUTH_JWT_SECRET` before any deploy.
+5. Optional hardening: persist `tool`-role messages; rehydrate `history` on restart; **Redis** for
+   sessions if running >1 worker/instance; customer PIN reset flow (no SMS/OTP yet — admin/manual).
 
 **Conventions for the AI layer:** keep `core/` free of web/DB/LLM imports; tools return plain
 strings for the LLM and recompute money via `core/`; every Supabase call is best-effort (never
@@ -274,15 +312,19 @@ path never depends on it.
 
 **The two load-bearing decisions (keep these invariants):**
 
-1. **Three independent surfaces, isolated by route group.** `app/(customer)/`, `app/(staff)/`,
-   and `app/(admin)/` each own their **own `layout.tsx`** (own nav/providers) and their own
-   feature code under `components/{customer,staff,admin}/`. They share **nothing** but the root
+1. **Five independent surfaces, isolated by route group.** `app/(customer)/`, `app/(staff)/`,
+   `app/(kitchen)/`, `app/(delivery)/`, and `app/(admin)/` each own their **own `layout.tsx`**
+   (own nav/providers) and their own feature code under
+   `components/{customer,staff,kitchen,delivery,admin}/`. They share **nothing** but the root
    `app/layout.tsx` (fonts + `ThemeProvider`). Rationale: a teammate/LLM can build or change one
    surface (e.g. admin) without importing from — or being able to break — the others. **Never make
-   one surface import another surface's components or layout.** **Auth + role-based access is a
-   FUTURE plan** — today each surface is a plain unguarded route (`/`, `/staff`, `/admin`) reached
-   by URL. When auth lands, the role gate goes in each group's `layout.tsx` (the seam is already
-   there); the correct screen is chosen by the signed-in user's role.
+   one surface import another surface's components or layout** (kiosk login forms are deliberately
+   duplicated per surface for this reason). **Auth + role gating is LIVE:** each group's
+   `layout.tsx` wraps its content in that surface's gate component (`AuthGate` / `StaffKioskGate` /
+   `KitchenKioskGate` / `DeliveryGate` / `AdminGate`), which renders the role's login screen until
+   an account with the matching role is signed in (`lib/auth-store.ts`, persisted JWT). The gate is
+   the UX layer only — the API independently verifies the JWT; per-endpoint authorization is the
+   next step.
 
 2. **Configurable palettes via semantic CSS vars only.** All colors are semantic CSS variables in
    `app/globals.css`, defined per palette under `[data-theme="..."]`; `lib/themes.ts` is the
@@ -318,11 +360,15 @@ the grader see the true mobile user flow on any screen. Bottom sheets are `max-w
 the frame. Header is centered (brand middle, cart + profile avatar right). The Next.js dev "N" indicator
 is disabled (`devIndicators: false`).
 
-**Staff** = kiosk POS (no chat/voice). **Admin** = not yet scoped. **Checkout stays a dedicated
-`/checkout` route, NOT inline** (money + sensitive data — deliberate). The **global header** carries
-a cart icon (opens the cart sheet from any screen via `menu-store.cartOpen`) + a profile avatar →
-`/profile`. **User is hardcoded** in `lib/user.ts` (`CURRENT_USER`) until auth lands; it prefills
-checkout. The palette switcher lives on `/profile` under "Appearance".
+**Staff** = kiosk POS (no chat/voice) · **Kitchen** = kiosk display · **Delivery** = phone-frame
+rider queue (all orders, newest first, address prominent) · **Admin** = webpage; its home is the
+**employees panel** (create staff/kitchen/delivery with an assigned PIN, reset PIN, deactivate).
+**Checkout stays a dedicated `/checkout` route, NOT inline** (money + sensitive data — deliberate).
+The **global header** carries a cart icon (opens the cart sheet from any screen via
+`menu-store.cartOpen`) + a profile avatar → `/profile`. **The signed-in user** (`lib/auth-store.ts`;
+`lib/user.ts` is deleted) prefills checkout; delivery orders (COD/UPI) **require a saved address**
+(managed on `/profile`) before they can be placed — store pickup is exempt. The palette switcher
+lives on `/profile` under "Appearance".
 
 **Money & menu rules still apply to the UI:** never compute prices client-side — only offer items
 from `/api/menu`, and price/place via the API. **Additive multi-topping cart endpoints** (in
@@ -334,14 +380,20 @@ Card is unused. Payment is **simulated** (no gateway; UPI shows a fake processin
 
 > **DB is the source of truth for API-placed orders (DECIDED).** `POST /api/cart/checkout` writes to
 > **Supabase ONLY, not `orders_log.txt`** — one order row per cart (line breakdown in `items` jsonb),
-> stamped with **`user_id`** (hardcoded `CURRENT_USER.id` now; real auth later — list orders by user).
+> stamped with **`user_id`** (the signed-in account's id) and, for delivery orders, the chosen
+> **`delivery_address`** (migration `0004`; shown on the rider's queue).
 > `order_no` is **generated by the DB** (`SM-YYYYMMDD-NNNN`, migration `0003`), not the `.txt`
 > counter. The DB write **raises/surfaces on failure** (no `.txt` fallback for API orders). Read via
-> **`GET /api/orders?user_id=`**; the Orders tab loads from it (`lib/orders-store.ts`, DB-backed) with
-> a **simulated** status stepper from `created_at`. **The graded Gradio app is unaffected — it still
-> writes `orders_log.txt` via `core.persistence`.** The single-line `/api/order` (used by the vanilla
-> `web/`) and the AI `confirm_and_save_order` tool still write the `.txt` + best-effort mirror; align
-> them to DB-only later if desired. **Gaps:** no promo-code or size fields (base = crust); voice
+> **`GET /api/orders?phone=`** (interim per-user filter; the authorization step will derive the user
+> from the JWT instead — the param is enumerable); the Orders tab loads by the signed-in phone
+> (`lib/orders-store.ts`, DB-backed) with a **simulated** status stepper from `created_at`;
+> **`GET /api/orders/recent`** feeds the delivery queue (all orders, interim until per-rider
+> assignment). **The graded Gradio app is unaffected — it still writes `orders_log.txt` via
+> `core.persistence`.** The AI `confirm_and_save_order` tool is
+> **also DB-only now** (same `db.orders.create_order` path: one row per order, `items` jsonb,
+> `source` chat|voice, `user_id` from the demo profile hardcoded in `ai/tools.py` — so chat/voice
+> orders do NOT yet land under the signed-in account; DB failure is surfaced to the LLM, order
+> NOT placed). Only the single-line `/api/order` (vanilla `web/`) still writes `.txt` + mirror. **Gaps:** no promo-code or size fields (base = crust); voice
 > MediaRecorder wiring is a later milestone. Checkout hides the bottom tab bar (dedicated screen).
 
 **Run:** `cd frontend && npm run dev` (port 3000). Set `AI_CORS_ORIGINS=http://localhost:3000` in
@@ -441,8 +493,9 @@ calls, token counts. Wrap in try/except — **observability errors must never re
 - prompt injection → blocked · abusive text → redirected · kill PRIMARY key → fallback fires ·
 - Hindi in → Hindi out · English in → English out · voice > 3 min → graceful cap ·
 - "speak to a human" → escalation · cancel mid-order → session resets ·
-- confirm order → **graded Gradio app** writes `orders_log.txt`; **API/frontend checkout** writes the
-  **Supabase `orders`** row (DB-only, `user_id`, `items` jsonb) — both with correct core pricing.
+- confirm order → **graded Gradio app** writes `orders_log.txt`; **API/frontend checkout AND the AI
+  chat/voice tool** write the **Supabase `orders`** row (DB-only, `user_id`, `items` jsonb) — all
+  with correct core pricing. Orders tab lists them by the profile phone.
 
 ---
 
@@ -471,3 +524,7 @@ calls, token counts. Wrap in try/except — **observability errors must never re
 - Don't let any input crash the app — every prompt validates and re-prompts.
 - Don't use external telephony (Twilio/Exotel) — voice is browser-only.
 - Don't let observability errors surface to the customer.
+
+## Future Architecture Note: UI Injection
+Currently, deterministic outputs (like the order bill) are passed through the LLM as strings to be wrapped in tags (e.g., `[BILL]...[/BILL]`). While this ensures context awareness, it introduces token-generation latency.
+A hyper-optimized future architecture should use **UI Injection**: The backend tool would instantly push the UI component to the frontend via a side-channel, and simply return a system note to the LLM (e.g., *'Bill shown to user, proceed to payment'*). This bypasses the LLM for rendering deterministic data, resulting in zero latency for the receipt and absolute determinism.

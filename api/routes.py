@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from api import security
 from core import analytics
 from core import menu as menu_mod
 from core import persistence, pricing
@@ -38,6 +39,15 @@ DEFAULT_MENU_MODE = "Use SliceMatic default menu"
 CUSTOM_MENU_MODE = "Upload my own menu files"
 
 router = APIRouter(prefix="/api")
+
+# Additive auth/account routes (/api/auth/*). Guarded import so the graded
+# Gradio path still boots even if the auth extras (bcrypt/jwt/DB) are absent.
+try:
+    from api.auth import router as auth_router
+
+    router.include_router(auth_router)
+except Exception:  # pragma: no cover - only without optional deps
+    pass
 
 
 # --------------------------------------------------------------------------- #
@@ -218,6 +228,11 @@ class CheckoutReq(BaseModel):
     name: str = ""
     phone: str = ""
     payment_mode: str = ""
+    # Delivery address chosen at checkout (shown on the rider's screen). The
+    # frontend requires it for delivery orders; server-side enforcement lands
+    # with the authorization step (address then comes from the authed profile).
+    address: str = ""
+    type: str = "online"
     lines: list[CartLineReq] = []
 
 
@@ -225,6 +240,28 @@ class ConfigReq(BaseModel):
     discount_rate: float
     discount_threshold: int = 5
     gst_rate: float | None = None
+
+
+class OrderStatusReq(BaseModel):
+    status: str
+
+
+# Kitchen advances received->preparing->ready_for_pickup; delivery advances
+# ready_for_pickup->out_for_delivery->delivered. Both share one endpoint (the
+# sequence itself is enforced by db/orders.py's state machine), but the
+# sequence check alone doesn't stop kitchen from also setting delivery's
+# statuses (or vice versa) — e.g. a kitchen token can legally advance
+# ready_for_pickup -> out_for_delivery since that IS the correct next step,
+# just not kitchen's job. This maps each role to the statuses it may actually
+# set; admin may set any of them.
+_ROLE_ALLOWED_STATUSES = {
+    "kitchen_staff": {"preparing", "ready_for_pickup"},
+    "delivery": {"out_for_delivery", "delivered"},
+}
+_kitchen_or_delivery = Depends(
+    security.require_role("kitchen_staff", "delivery", "admin")
+)
+_delivery = Depends(security.require_role("delivery", "admin"))
 
 
 # --------------------------------------------------------------------------- #
@@ -411,6 +448,8 @@ def checkout_cart(req: CheckoutReq):
             total=totals["total"],
             payment_mode=mode,
             source="api",
+            delivery_address=req.address.strip() or None,
+            type=req.type,
         )
     except Exception as exc:  # DB is source of truth — surface the failure
         return {"ok": False, "errors": {"db": f"Could not save the order: {exc}"}}
@@ -425,18 +464,86 @@ def checkout_cart(req: CheckoutReq):
     }
 
 
-@router.get("/orders")
-def list_orders(user_id: str = ""):
-    """List a user's orders (newest first) from the DB — the API source of truth."""
-    if not user_id:
-        return {"ok": False, "errors": {"user_id": "user_id is required."}}
+@router.get("/orders/recent")
+def list_recent_orders(type: str = "", status: str = ""):
+    """ALL recent orders (newest first) — the delivery rider's work queue.
+
+    Interim scope: every rider sees every order, per the current requirement;
+    per-rider assignment + role enforcement arrive with the authorization step."""
     if db_orders is None:
         return {"ok": False, "errors": {"db": "Order database is unavailable."}}
     try:
-        orders = db_orders.list_orders_by_user(user_id)
+        return {
+            "ok": True,
+            "orders": db_orders.list_recent_orders(
+                type=type or None, status=status or None
+            ),
+        }
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+
+
+@router.get("/orders")
+def list_orders(user_id: str = "", phone: str = "", type: str = "", status: str = ""):
+    """List a user's orders (newest first) from the DB — the API source of truth.
+
+    Filter by phone (interim, until real auth) or user_id; phone wins if both
+    are sent. The frontend currently passes the profile's phone."""
+    if not user_id and not phone:
+        return {"ok": False, "errors": {"filter": "phone or user_id is required."}}
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+    try:
+        if phone:
+            orders = db_orders.list_orders_by_phone(
+                phone, type=type or None, status=status or None
+            )
+        else:
+            orders = db_orders.list_orders_by_user(
+                user_id, type=type or None, status=status or None
+            )
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
     return {"ok": True, "orders": orders}
+
+
+@router.post("/orders/{order_no}/status")
+def update_order_status(
+    order_no: str, req: OrderStatusReq, claims: dict = _kitchen_or_delivery
+):
+    """Advance one order one step (kitchen: preparing/ready_for_pickup;
+    delivery: out_for_delivery/delivered). db_orders.update_order_status
+    enforces the legal-transition SEQUENCE; _ROLE_ALLOWED_STATUSES enforces
+    which role may set which status (the sequence check alone would let
+    kitchen legally set delivery's statuses and vice versa)."""
+    role = claims.get("role")
+    allowed = _ROLE_ALLOWED_STATUSES.get(role)
+    if allowed is not None and req.status not in allowed:
+        return {
+            "ok": False,
+            "errors": {"status": f"Your role can't set status '{req.status}'."},
+        }
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+    try:
+        order = db_orders.update_order_status(order_no, req.status)
+    except ValueError as exc:
+        return {"ok": False, "errors": {"status": str(exc)}}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+    return {"ok": True, "order": order}
+
+
+@router.get("/orders/delivery-stats")
+def delivery_stats(claims: dict = _delivery):
+    """Today's delivered count + each delivered order's pickup->delivered
+    minutes, for the delivery Profile tab."""
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+    try:
+        return {"ok": True, **db_orders.get_delivery_stats()}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
 
 
 @router.get("/config")

@@ -54,6 +54,17 @@ class Settings:
     brand: str = "SliceMatic"
     menu_dir: str = "menu_data"
     openrouter_base_url: str = OPENROUTER_BASE_URL
+    # Sarvam AI — full voice pipeline for Hindi + Indian English.
+    # Saarika = STT (auto-detects language), Bulbul = TTS. Deepgram is fallback.
+    sarvam_api_key: str | None = None
+    sarvam_speaker: str = "anushka"
+    sarvam_model: str = "bulbul:v2"
+    sarvam_stt_model: str = "saarika:v2.5"
+    # Real-time voice call (ai/sarvam_stream.py, ai/voice_call.py): bulbul:v3 for
+    # native Hinglish code-mixing. v3 has its own speaker roster (v2 speakers like
+    # "abhilash" are invalid on v3) — kept separate from sarvam_speaker above so the
+    # batch REST path (ai/sarvam.py, still on bulbul:v2) is unaffected.
+    sarvam_v3_speaker: str = "ratan"
 
     @property
     def models(self) -> tuple[str, ...]:
@@ -67,6 +78,11 @@ class Settings:
     @property
     def voice_enabled(self) -> bool:
         return bool(self.deepgram_api_key)
+
+    @property
+    def sarvam_enabled(self) -> bool:
+        """Sarvam (Bulbul) is the primary TTS for both Hindi and English."""
+        return bool(self.sarvam_api_key)
 
 
 @lru_cache(maxsize=1)
@@ -99,4 +115,9 @@ def get_settings() -> Settings:
             _env("LANGFUSE_BASE_URL") or _env("LANGFUSE_HOST") or DEFAULT_LANGFUSE_HOST
         ),
         menu_dir=_env("MENU_DIR") or "menu_data",
+        sarvam_api_key=_env("SARVAM_API_KEY"),
+        sarvam_speaker=_env("SARVAM_SPEAKER") or "anushka",
+        sarvam_model=_env("SARVAM_MODEL") or "bulbul:v2",
+        sarvam_stt_model=_env("SARVAM_STT_MODEL") or "saarika:v2.5",
+        sarvam_v3_speaker=_env("SARVAM_V3_SPEAKER") or "ratan",
     )

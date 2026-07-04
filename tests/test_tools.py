@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 import ai.tools as tools
@@ -13,17 +15,12 @@ def ids():
 
 @pytest.fixture
 def no_writes(monkeypatch):
-    """Stop tools from touching orders_log.txt or Supabase; capture calls."""
-    calls = {"append": [], "mirror": []}
+    """Stub the DB order write (chat/voice orders are Supabase-only); capture calls."""
+    calls = {"create": []}
     monkeypatch.setattr(
-        tools.persistence,
-        "append_order",
-        lambda **kw: (
-            calls["append"].append(kw) or ("2026-06-30 00:00:00", "SM-000001")
-        ),
-    )
-    monkeypatch.setattr(
-        tools.db_orders, "mirror_order", lambda **kw: calls["mirror"].append(kw)
+        tools.db_orders,
+        "create_order",
+        lambda **kw: calls["create"].append(kw) or "SM-20260703-0001",
     )
     return calls
 
@@ -39,21 +36,52 @@ def test_calculate_single_line(ids):
     s = Session(id="c1")
     out = tools.execute_tool(
         "calculate_order_price",
-        {"items": [{"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 2}]},
+        {"items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 2}]},
         s,
     )
-    assert "Grand total payable: INR" in out
+    payload = json.loads(out)  # success path returns the bill as JSON
+    assert payload["ok"] is True
+    assert len(payload["lines"]) == 1
+    assert payload["cart"]["total"] == payload["lines"][0]["total"]
     assert s.pricing["n_lines"] == 1
+    assert s.pricing["grand_total"] == payload["cart"]["total"]
 
 
 def test_calculate_does_not_auto_discount_at_qty5(ids):
     b, p, t = ids
     out = tools.execute_tool(
         "calculate_order_price",
-        {"items": [{"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 5}]},
+        {"items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 5}]},
         None,
     )
     assert "discount" not in out.lower()
+
+
+
+def test_calculate_multi_topping_sums_menu_prices(ids):
+    """2-3 toppings are fused into one configuration; unit price adds them all."""
+    b, p, _ = ids
+    m = menu_mod.load_menu("menu_data")
+    t1, t2 = m.toppings[0], m.toppings[1]
+    out = tools.execute_tool(
+        "calculate_order_price",
+        {
+            "items": [
+                {
+                    "base_id": b,
+                    "pizza_id": p,
+                    "topping_ids": [t1.id, t2.id],
+                    "quantity": 1,
+                }
+            ]
+        },
+        None,
+    )
+    line = json.loads(out)["lines"][0]
+    assert [tp["id"] for tp in line["toppings"]] == [t1.id, t2.id]
+    assert line["unit_price"] == round(
+        m.bases[0].price + m.pizzas[0].price + t1.price + t2.price, 2
+    )
 
 
 def test_calculate_multi_line(ids):
@@ -63,14 +91,18 @@ def test_calculate_multi_line(ids):
         "calculate_order_price",
         {
             "items": [
-                {"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 2},
-                {"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 3},
+                {"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 2},
+                {"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 3},
             ]
         },
         s,
     )
+    payload = json.loads(out)
     assert s.pricing["n_lines"] == 2
-    assert out.count("line total") == 2
+    assert len(payload["lines"]) == 2
+    assert payload["cart"]["total"] == round(
+        sum(ln["total"] for ln in payload["lines"]), 2
+    )
 
 
 def test_calculate_rejects_bad_id_and_qty(ids):
@@ -79,12 +111,22 @@ def test_calculate_rejects_bad_id_and_qty(ids):
         "calculate_order_price",
         {
             "items": [
-                {"base_id": "NOPE", "pizza_id": p, "topping_id": t, "quantity": 99}
+                {"base_id": "NOPE", "pizza_id": p, "topping_ids": [t], "quantity": 99}
             ]
         },
         None,
     )
     assert "Could not price" in out
+
+
+def test_calculate_rejects_empty_toppings(ids):
+    b, p, _ = ids
+    out = tools.execute_tool(
+        "calculate_order_price",
+        {"items": [{"base_id": b, "pizza_id": p, "topping_ids": [], "quantity": 1}]},
+        None,
+    )
+    assert "Could not price" in out and "topping" in out.lower()
 
 
 def test_calculate_empty_items():
@@ -101,22 +143,26 @@ def test_confirm_saves_and_returns_order_no(ids, no_writes):
             "customer_name": "Aman Sharma",
             "customer_phone": "9811122233",
             "payment_mode": "UPI",
-            "items": [{"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 2}],
+            "items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 2}],
         },
         s,
     )
-    assert "Order confirmed" in out and "SM-" in out
-    assert len(no_writes["append"]) == 1
-    assert len(no_writes["mirror"]) == 1
+    payload = json.loads(out)  # success returns JSON for deterministic injection
+    assert payload["ok"] is True and payload["order_no"] == "SM-20260703-0001"
     assert s.confirmed is True and s.status == "ordered"
-    # all lines share one order number + source/session propagated
-    assert no_writes["mirror"][0]["source"] == "chat"
-    assert no_writes["mirror"][0]["session_id"] == "cf1"
+    # DB-only: one order row, stamped with source/session (anonymous session
+    # here, so user_id is None — attach_user stamps it for signed-in customers)
+    assert len(no_writes["create"]) == 1
+    row = no_writes["create"][0]
+    assert row["user_id"] is None
+    assert row["source"] == "chat"
+    assert row["session_id"] == "cf1"
+    assert row["phone"] == "9811122233"  # orders are listed by phone for now
 
 
-def test_confirm_multi_line_one_order_no(ids, no_writes):
+def test_confirm_multi_line_is_one_db_row(ids, no_writes):
     b, p, t = ids
-    line = {"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 1}
+    line = {"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}
     out = tools.execute_tool(
         "confirm_and_save_order",
         {
@@ -127,10 +173,11 @@ def test_confirm_multi_line_one_order_no(ids, no_writes):
         },
         Session(id="cf2"),
     )
-    assert "Order confirmed" in out
-    assert len(no_writes["append"]) == 2
-    order_nos = {m["order_no"] for m in no_writes["mirror"]}
-    assert len(order_nos) == 1  # both lines, one order number
+    assert json.loads(out)["ok"] is True
+    assert len(no_writes["create"]) == 1  # one row per order
+    row = no_writes["create"][0]
+    assert len(row["items"]) == 2  # line breakdown in items jsonb
+    assert row["total"] == round(sum(ln["line_total"] for ln in row["items"]), 2)
 
 
 def test_confirm_rejects_bad_customer(ids, no_writes):
@@ -141,12 +188,131 @@ def test_confirm_rejects_bad_customer(ids, no_writes):
             "customer_name": "A",  # too short
             "customer_phone": "12345",  # invalid
             "payment_mode": "Bitcoin",  # invalid
-            "items": [{"base_id": b, "pizza_id": p, "topping_id": t, "quantity": 2}],
+            "items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 2}],
         },
         Session(id="cf3"),
     )
     assert "Cannot place the order" in out
-    assert no_writes["append"] == []  # nothing saved
+    assert no_writes["create"] == []  # nothing saved
+
+
+def test_confirm_surfaces_db_failure(ids, monkeypatch):
+    """DB is the source of truth — a failed write must be reported, not saved."""
+    b, p, t = ids
+
+    def boom(**kw):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(tools.db_orders, "create_order", boom)
+    s = Session(id="cf4")
+    out = tools.execute_tool(
+        "confirm_and_save_order",
+        {
+            "customer_name": "Aman Sharma",
+            "customer_phone": "9811122233",
+            "payment_mode": "UPI",
+            "items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}],
+        },
+        s,
+    )
+    assert "Could not save the order" in out and "NOT" in out
+    assert s.confirmed is False  # the gate stays open for a retry
+
+
+def _signed_in(session: Session) -> Session:
+    """Simulate ai/profile.attach_user resolving a JWT onto the session."""
+    session.user_id = "uid-123"
+    session.name = "Aarav Sharma"
+    session.phone = "9876543210"
+    session.address = "D-42, New Ashok Nagar, New Delhi 110096 (Home)"
+    return session
+
+
+def test_get_customer_profile_reads_session_user():
+    s = _signed_in(Session(id="pf1"))
+    out = tools.execute_tool("get_customer_profile", {}, s)
+    assert s.name in out and s.phone in out and s.address in out
+
+
+def test_get_customer_profile_anonymous_session():
+    out = tools.execute_tool("get_customer_profile", {}, Session(id="pf1b"))
+    assert "No signed-in profile" in out
+
+
+def test_confirm_falls_back_to_session_profile(ids, no_writes):
+    """confirm without name/phone args uses the profile attached to the session,
+    and the order row is stamped with user_id + delivery address."""
+    b, p, t = ids
+    s = _signed_in(Session(id="pf2"))
+    out = tools.execute_tool(
+        "confirm_and_save_order",
+        {
+            "payment_mode": "UPI",
+            "items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}],
+        },
+        s,
+    )
+    assert json.loads(out)["ok"] is True
+    row = no_writes["create"][0]
+    assert row["name"] == s.name and row["phone"] == s.phone
+    assert row["user_id"] == "uid-123"
+    assert row["delivery_address"] == s.address
+
+
+def test_confirm_requires_address_for_signed_in_user(ids, no_writes):
+    """A signed-in customer with NO saved address cannot place a chat order."""
+    b, p, t = ids
+    s = _signed_in(Session(id="pf3"))
+    s.address = None
+    out = tools.execute_tool(
+        "confirm_and_save_order",
+        {
+            "payment_mode": "UPI",
+            "items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}],
+        },
+        s,
+    )
+    assert "Cannot place the order" in out and "address" in out.lower()
+    assert no_writes["create"] == []  # nothing saved
+
+
+def test_tools_for_gates_save_on_pricing(ids):
+    """confirm_and_save_order is only exposed once a bill is priced (and hidden
+    again after saving); get_menu/validate_customer are never exposed."""
+    b, p, t = ids
+    s = Session(id="gate1")
+    names = {d["function"]["name"] for d in tools.tools_for(s)}
+    assert "confirm_and_save_order" not in names
+    assert "get_menu" not in names and "validate_customer" not in names
+    assert {
+        "get_customer_profile",
+        "calculate_order_price",
+        "escalate_to_human",
+    } <= names
+
+    tools.execute_tool(
+        "calculate_order_price",
+        {"items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}]},
+        s,
+    )
+    names = {d["function"]["name"] for d in tools.tools_for(s)}
+    assert "confirm_and_save_order" in names
+
+    s.confirmed = True  # saved — the gate closes until the next repricing
+    names = {d["function"]["name"] for d in tools.tools_for(s)}
+    assert "confirm_and_save_order" not in names
+
+
+def test_calculate_reopens_confirmed_session(ids):
+    """Repricing after a saved order must re-enable saving (new order flow)."""
+    b, p, t = ids
+    s = Session(id="gate2", confirmed=True)
+    tools.execute_tool(
+        "calculate_order_price",
+        {"items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 1}]},
+        s,
+    )
+    assert s.confirmed is False
 
 
 def test_validate_customer_all_valid_sets_session():

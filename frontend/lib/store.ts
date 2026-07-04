@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 import { sendChat, voiceRespond } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 const SESSION_KEY = "slicematic-session-id";
 
@@ -29,6 +30,14 @@ interface ChatState {
   /** Voice turn: add the transcript as a user message, run the agent via the
    *  voice channel, add the reply. Returns the reply text (for TTS) or null. */
   sendVoice: (transcript: string) => Promise<string | null>;
+  /** Realtime voice call (use-voice.ts): the WS already ran the turn and
+   *  resolved both pieces, so these just push finished bubbles — no pending
+   *  placeholder, no second network call (unlike `send`/`sendVoice`). */
+  appendUserMessage: (text: string) => void;
+  appendAssistantMessage: (
+    text: string,
+    opts?: { blocked?: boolean; escalated?: boolean }
+  ) => void;
   reset: () => void;
 }
 
@@ -85,7 +94,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const res = await sendChat(trimmed, get().sessionId);
+      // JWT lets the backend serve the signed-in profile to the agent.
+      const res = await sendChat(
+        trimmed,
+        get().sessionId,
+        useAuthStore.getState().token
+      );
       window.localStorage.setItem(SESSION_KEY, res.session_id);
       set((s) => ({
         sessionId: res.session_id,
@@ -131,7 +145,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const res = await voiceRespond(trimmed, get().sessionId);
+      const res = await voiceRespond(
+        trimmed,
+        get().sessionId,
+        useAuthStore.getState().token
+      );
       window.localStorage.setItem(SESSION_KEY, res.session_id);
       set((s) => ({
         sessionId: res.session_id,
@@ -159,6 +177,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
       return null;
     }
+  },
+
+  appendUserMessage: (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    set((s) => ({
+      messages: [...s.messages, { id: newId(), role: "user", content: trimmed }],
+    }));
+  },
+
+  appendAssistantMessage: (text, opts) => {
+    set((s) => ({
+      escalated: opts?.escalated ?? s.escalated,
+      messages: [
+        ...s.messages,
+        {
+          id: newId(),
+          role: "assistant",
+          content: text,
+          blocked: opts?.blocked,
+        },
+      ],
+    }));
   },
 
   reset: () => {

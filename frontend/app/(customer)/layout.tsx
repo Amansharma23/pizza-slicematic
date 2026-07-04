@@ -1,10 +1,13 @@
 import { AppHeader } from "@/components/customer/app-header";
+import { AuthGate } from "@/components/customer/auth-gate";
 import { GlobalCart } from "@/components/customer/global-cart";
 import { TabBar } from "@/components/customer/tab-bar";
 
 /**
  * Customer surface shell — its OWN layout (header + bottom tab bar), independent
  * of the (staff) and (admin) groups. Shares only the root layout (fonts/theme).
+ * AuthGate swaps the whole frame content for sign-in/sign-up until a customer
+ * account is signed in (role gate lives here, per the surface-isolation seam).
  */
 export default function CustomerLayout({
   children,
@@ -16,10 +19,12 @@ export default function CustomerLayout({
   return (
     <div className="flex min-h-dvh justify-center bg-backdrop">
       <div className="relative flex h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-2xl sm:border-x sm:border-border">
-        <AppHeader />
-        <main className="min-h-0 flex-1">{children}</main>
-        <TabBar />
-        <GlobalCart />
+        <AuthGate>
+          <AppHeader />
+          <main className="min-h-0 flex-1">{children}</main>
+          <TabBar />
+          <GlobalCart />
+        </AuthGate>
       </div>
     </div>
   );

@@ -20,16 +20,22 @@ export class ApiError extends Error {
   }
 }
 
-async function postJSON<T>(path: string, body: unknown): Promise<T> {
+async function requestJSON<T>(
+  path: string,
+  init: RequestInit,
+  headers?: Record<string, string>
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      ...init,
+      headers: { ...(init.headers as Record<string, string>), ...headers },
     });
   } catch {
     throw new ApiError("Can't reach SliceMatic right now. Check your connection.");
+  }
+  if (res.status === 401) {
+    throw new ApiError("Your session has expired — sign in again.", 401);
   }
   if (!res.ok) {
     throw new ApiError(`Request failed (${res.status}).`, res.status);
@@ -37,15 +43,138 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`);
-  } catch {
-    throw new ApiError("Can't reach SliceMatic right now. Check your connection.");
-  }
-  if (!res.ok) throw new ApiError(`Request failed (${res.status}).`, res.status);
-  return res.json() as Promise<T>;
+async function postJSON<T>(
+  path: string,
+  body: unknown,
+  headers?: Record<string, string>
+): Promise<T> {
+  return requestJSON<T>(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    headers
+  );
+}
+
+async function getJSON<T>(
+  path: string,
+  headers?: Record<string, string>
+): Promise<T> {
+  return requestJSON<T>(path, {}, headers);
+}
+
+/** Authorization header for authenticated calls (JWT from the auth store). */
+export function authHeader(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+/* --------------------------- Auth --------------------------- */
+// /api/auth/* — user + role management. Business errors come back as
+// { ok: false, errors: {...} } with HTTP 200; only token failures are 401/403.
+
+export type Role = "user" | "admin" | "staff" | "kitchen_staff" | "delivery";
+
+export interface SavedAddress {
+  id: string;
+  label: string;
+  line: string;
+  isDefault?: boolean;
+}
+
+export interface AuthUser {
+  id: string;
+  role: Role;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  emp_id: string | null;
+  address: SavedAddress[] | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  ok: boolean;
+  token?: string;
+  user?: AuthUser;
+  errors?: Record<string, string>;
+}
+
+export function signup(payload: {
+  name: string;
+  phone: string;
+  pin: string;
+  confirm_pin: string;
+}): Promise<AuthResponse> {
+  return postJSON<AuthResponse>("/api/auth/signup", payload);
+}
+
+export function login(
+  role: Role,
+  identifier: string,
+  secret: string
+): Promise<AuthResponse> {
+  return postJSON<AuthResponse>("/api/auth/login", { role, identifier, secret });
+}
+
+export function getMe(token: string): Promise<AuthResponse> {
+  return getJSON<AuthResponse>("/api/auth/me", authHeader(token));
+}
+
+export function saveAddresses(
+  token: string,
+  address: SavedAddress[]
+): Promise<AuthResponse> {
+  return requestJSON<AuthResponse>(
+    "/api/auth/me/address",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    },
+    authHeader(token)
+  );
+}
+
+export interface EmployeesResponse {
+  ok: boolean;
+  employees?: AuthUser[];
+  employee?: AuthUser;
+  errors?: Record<string, string>;
+}
+
+export function listEmployees(token: string): Promise<EmployeesResponse> {
+  return getJSON<EmployeesResponse>("/api/auth/employees", authHeader(token));
+}
+
+export function createEmployee(
+  token: string,
+  payload: { name: string; phone: string; role: Role; pin: string }
+): Promise<EmployeesResponse> {
+  return postJSON<EmployeesResponse>(
+    "/api/auth/employees",
+    payload,
+    authHeader(token)
+  );
+}
+
+export function updateEmployee(
+  token: string,
+  id: string,
+  payload: { is_active?: boolean; pin?: string }
+): Promise<EmployeesResponse> {
+  return requestJSON<EmployeesResponse>(
+    `/api/auth/employees/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    authHeader(token)
+  );
 }
 
 /* --------------------------- Chat --------------------------- */
@@ -59,12 +188,14 @@ export interface ChatResponse {
 
 export function sendChat(
   message: string,
-  sessionId: string | null
+  sessionId: string | null,
+  token?: string | null
 ): Promise<ChatResponse> {
-  return postJSON<ChatResponse>("/chat", {
-    message,
-    session_id: sessionId,
-  });
+  return postJSON<ChatResponse>(
+    "/chat",
+    { message, session_id: sessionId },
+    token ? authHeader(token) : undefined
+  );
 }
 
 /* --------------------------- Menu --------------------------- */
@@ -147,6 +278,8 @@ export interface CheckoutPayload {
   name: string;
   phone: string;
   payment_mode: string;
+  /** Delivery address line — required by the UI for delivery orders. */
+  address: string;
   lines: CartLinePayload[];
 }
 
@@ -190,6 +323,15 @@ export interface UserOrder {
   status: string;
   created_at: string;
   customer_name: string;
+  customer_phone?: string;
+  delivery_address?: string | null;
+  source?: string;
+  /** "online" today; reserved for a future staff-kiosk "in-store" value. */
+  type?: string | null;
+  preparing_at?: string | null;
+  ready_at?: string | null;
+  out_for_delivery_at?: string | null;
+  delivered_at?: string | null;
 }
 
 export interface OrdersResponse {
@@ -204,7 +346,73 @@ export function getUserOrders(userId: string): Promise<OrdersResponse> {
   );
 }
 
+/** Interim filter until real auth: list orders by the profile's phone number
+ *  (chat/voice + checkout orders all carry it). Swap back to user_id later. */
+export function getOrdersByPhone(phone: string): Promise<OrdersResponse> {
+  return getJSON<OrdersResponse>(`/api/orders?phone=${encodeURIComponent(phone)}`);
+}
+
+/** ALL recent orders — the kitchen/delivery work queues (every rider sees
+ *  every order for now; per-rider assignment arrives with the authorization
+ *  step). Optional type/status filter the same way the backend does. */
+export function getRecentOrders(filters?: {
+  type?: string;
+  status?: string;
+}): Promise<OrdersResponse> {
+  const params = new URLSearchParams();
+  if (filters?.type) params.set("type", filters.type);
+  if (filters?.status) params.set("status", filters.status);
+  const qs = params.toString();
+  return getJSON<OrdersResponse>(`/api/orders/recent${qs ? `?${qs}` : ""}`);
+}
+
+export interface OrderStatusResponse {
+  ok: boolean;
+  order?: UserOrder;
+  errors?: Record<string, string>;
+}
+
+/** Advance one order one step (kitchen: preparing/ready_for_pickup; delivery:
+ *  out_for_delivery/delivered) — db_orders.update_order_status enforces the
+ *  legal sequence server-side, so an illegal call just comes back as an error. */
+export function updateOrderStatus(
+  orderNo: string,
+  status: string,
+  token: string
+): Promise<OrderStatusResponse> {
+  return postJSON<OrderStatusResponse>(
+    `/api/orders/${encodeURIComponent(orderNo)}/status`,
+    { status },
+    authHeader(token)
+  );
+}
+
+export interface DeliveryStatsOrder {
+  order_no: string;
+  delivered_at: string | null;
+  pickup_to_delivered_minutes: number | null;
+}
+
+export interface DeliveryStatsResponse {
+  ok: boolean;
+  delivered_today?: number;
+  orders?: DeliveryStatsOrder[];
+  errors?: Record<string, string>;
+}
+
+export function getDeliveryStats(token: string): Promise<DeliveryStatsResponse> {
+  return getJSON<DeliveryStatsResponse>(
+    "/api/orders/delivery-stats",
+    authHeader(token)
+  );
+}
+
 /* --------------------------- Voice -------------------------- */
+
+/** wss://.../voice/call (or ws:// for local dev) — the realtime call socket. */
+export function voiceCallWsUrl(): string {
+  return `${API_BASE.replace(/^http/, "ws")}/voice/call`;
+}
 
 export interface TranscribeResponse {
   session_id: string;
@@ -249,12 +457,14 @@ export interface VoiceRespondResponse {
 
 export function voiceRespond(
   transcript: string,
-  sessionId: string | null
+  sessionId: string | null,
+  token?: string | null
 ): Promise<VoiceRespondResponse> {
-  return postJSON<VoiceRespondResponse>("/voice/respond", {
-    transcript,
-    session_id: sessionId,
-  });
+  return postJSON<VoiceRespondResponse>(
+    "/voice/respond",
+    { transcript, session_id: sessionId },
+    token ? authHeader(token) : undefined
+  );
 }
 
 export async function synthesizeSpeech(

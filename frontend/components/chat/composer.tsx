@@ -1,12 +1,17 @@
 "use client";
 
 import { Phone, SendHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useVoiceCall } from "@/lib/use-voice";
 
 import { CallPanel } from "./call-panel";
+
+// Voice is DISABLED for this release: hides the call button/panel only. The
+// backend /voice/* routes and use-voice hook stay intact — flip to true to
+// re-enable the whole voice UI.
+const VOICE_ENABLED = true;
 
 export function Composer({
   onSend,
@@ -18,6 +23,18 @@ export function Composer({
   const [value, setValue] = useState("");
   const call = useVoiceCall();
 
+  useEffect(() => {
+    const handleInsert = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === "string") {
+        setValue(detail);
+        document.getElementById("chat-input")?.focus();
+      }
+    };
+    window.addEventListener("insert-chat", handleInsert);
+    return () => window.removeEventListener("insert-chat", handleInsert);
+  }, []);
+
   const submit = () => {
     const text = value.trim();
     if (!text || disabled) return;
@@ -27,7 +44,7 @@ export function Composer({
 
   // While a call is active, the composer becomes the call controls; the
   // conversation still appears as bubbles in the thread above.
-  if (call.isActive) {
+  if (VOICE_ENABLED && call.isActive) {
     return (
       <CallPanel
         state={call.state}
@@ -39,10 +56,13 @@ export function Composer({
     );
   }
 
-  const notice =
-    call.state === "ended"
-      ? "Call ended (3-minute limit). Start a new call or keep typing."
-      : call.state === "denied" || call.state === "unsupported"
+  const notice = !VOICE_ENABLED
+    ? null
+    : call.state === "ended"
+      ? (call.error ?? "Call ended. Start a new call or keep typing.")
+      : call.state === "denied" ||
+          call.state === "unsupported" ||
+          call.state === "unreachable"
         ? (call.error ?? "Voice calls aren't available in this browser.")
         : null;
 
@@ -61,7 +81,7 @@ export function Composer({
         }}
         className="flex items-end gap-2"
       >
-        {call.supported && (
+        {VOICE_ENABLED && call.supported && (
           <Button
             type="button"
             variant="ghost"

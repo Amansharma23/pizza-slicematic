@@ -17,6 +17,8 @@ audioop-lts==0.2.2 ; python_full_version >= '3.13'
     # via gradio
 backoff==2.2.1
     # via langfuse
+bcrypt==5.0.0
+    # via pizzaflow
 brotli==1.2.0
     # via gradio
 certifi==2026.6.17
@@ -223,6 +225,9 @@ pygments==2.20.0
     #   rich
 pyjwt==2.13.0
     # via supabase-auth
+    # via
+    #   pizzaflow
+    #   supabase-auth
 pytest==9.1.1
 python-dateutil==2.9.0.post0
     # via pandas
@@ -307,9 +312,13 @@ typing-inspection==0.4.2
     #   fastapi
     #   pydantic
 tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
+<<<<<<< HEAD
     # via
     #   pandas
     #   psycopg
+=======
+    # via pandas
+>>>>>>> origin/master
 urllib3==2.7.0
     # via requests
 uvicorn==0.49.0
