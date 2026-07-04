@@ -54,7 +54,8 @@ def test_calculate_does_not_auto_discount_at_qty5(ids):
         {"items": [{"base_id": b, "pizza_id": p, "topping_ids": [t], "quantity": 5}]},
         None,
     )
-    assert "discount" not in out.lower()
+    payload = json.loads(out)
+    assert payload["cart"]["discount"] == 0.0
 
 
 
