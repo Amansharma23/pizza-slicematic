@@ -1,10 +1,10 @@
-"""LLM tool definitions + executor. The only AI code that touches core/.
+﻿"""LLM tool definitions + executor. The only AI code that touches core/.
 
 Each tool returns a string for the LLM (JSON on deterministic successes the
 agent injects verbatim). All money is computed by core/pricing.py; the menu
 comes from core/menu.py. Chat/voice orders are saved to Supabase ONLY
-(db.orders.create_order — same DECIDED path as /api/cart/checkout, DB-generated
-order_no, user_id-stamped); orders_log.txt belongs to the graded Gradio app.
+(db.orders.create_order â€” same DECIDED path as /api/cart/checkout, DB-generated
+order_no, user_id-stamped); orders_log.txt is retained only for historical flat-file compatibility.
 The LLM never computes prices and may only use item IDs that exist in the menu.
 """
 
@@ -18,7 +18,7 @@ import os
 from ai import guardrails, observability
 
 # Shared live-menu resolver (default/custom) + the multi-topping fuser the cart
-# endpoints already use — one MenuItem with summed menu prices for compute_bill.
+# endpoints already use â€” one MenuItem with summed menu prices for compute_bill.
 from api.routes import _combined_topping, _load_active_menu
 from core import pricing
 from core import validation as v
@@ -84,7 +84,7 @@ TOOL_DEFINITIONS = [
             "name": "calculate_order_price",
             "description": "Compute the itemised bill (subtotal, "
             "18% GST, total) for one or more order lines (1-3 toppings each). In chat "
-            "the bill is shown to the customer automatically — do not repeat its "
+            "the bill is shown to the customer automatically â€” do not repeat its "
             "numbers. On a voice call, read back only the total.",
             "parameters": {
                 "type": "object",
@@ -178,7 +178,7 @@ def tools_for(session) -> list[dict]:
     """The tool schemas legal for this turn (stage gating).
 
     confirm_and_save_order only exists once a bill has been priced and not yet
-    saved — the model mechanically cannot save an order early, no prompt rule
+    saved â€” the model mechanically cannot save an order early, no prompt rule
     needed. Repricing (calculate_order_price) reopens a confirmed session.
     """
     names = set(_EXPOSED_ALWAYS)
@@ -190,7 +190,7 @@ def tools_for(session) -> list[dict]:
 def menu_names() -> dict[str, list[str]]:
     """A few live item names per category, for prompt few-shot examples.
 
-    Never hardcode names in the prompt — the grader swaps menu files. Empty
+    Never hardcode names in the prompt â€” the grader swaps menu files. Empty
     lists when the menu is unavailable (the caller then skips the examples).
     """
     try:
@@ -236,7 +236,7 @@ def _resolve_lines(items) -> tuple[list[tuple[Bill, list[MenuItem]]], list[str]]
 
         if missing:
             errors.append(
-                f"Item {idx}: unknown {', '.join(missing)} — not on the menu."
+                f"Item {idx}: unknown {', '.join(missing)} â€” not on the menu."
             )
             continue
         if not topping_ids:
@@ -266,7 +266,7 @@ def _get_menu(args, session) -> str:
         return f"Menu unavailable: {exc}"
 
     def block(title, items):
-        rows = "\n".join(f"  {i.id} — {i.name} — INR {i.price:.2f}" for i in items)
+        rows = "\n".join(f"  {i.id} â€” {i.name} â€” INR {i.price:.2f}" for i in items)
         return f"{title}:\n{rows}"
 
     return "\n".join(
@@ -287,11 +287,11 @@ def _get_customer_profile(args, session) -> str:
             "10-digit phone number before saving any order."
         )
     address = session.address or (
-        "NONE SAVED — a delivery address is required before the order can be "
+        "NONE SAVED â€” a delivery address is required before the order can be "
         "placed; ask the customer to add one in the Profile tab, then continue."
     )
     return (
-        f"Saved profile — name: {session.name}, phone: {session.phone}, "
+        f"Saved profile â€” name: {session.name}, phone: {session.phone}, "
         f"delivery address: {address}. Use these; never ask the customer "
         "to type them."
     )
@@ -383,10 +383,10 @@ def _validate_customer(args, session) -> str:
 
 
 def _confirm_and_save_order(args, session) -> str:
-    """Save the order to Supabase ONLY — one row per order, line breakdown in
+    """Save the order to Supabase ONLY â€” one row per order, line breakdown in
     `items` jsonb, DB-generated order_no (SM-YYYYMMDD-NNNN), stamped with the
     profile's user_id. Same DECIDED path as /api/cart/checkout: no .txt write
-    (the graded Gradio app owns orders_log.txt) and a DB failure is surfaced,
+    (orders_log.txt is not used by Stage 3 orders) and a DB failure is surfaced,
     never swallowed."""
     # Output guardrail: deterministic customer-field validation. Name/phone fall
     # back to the saved profile (primed on the session by get_customer_profile).
@@ -454,7 +454,7 @@ def _confirm_and_save_order(args, session) -> str:
             language=(session.language if session else None),
             delivery_address=(session.address if session else None),
         )
-    except Exception as exc:  # DB is the source of truth — surface, don't swallow
+    except Exception as exc:  # DB is the source of truth â€” surface, don't swallow
         log.warning("Order save failed: %s", exc)
         return (
             f"Could not save the order (database error: {exc}). The order is NOT "
@@ -516,7 +516,7 @@ def _escalate_to_human(args, session) -> str:
         )
     log.info("Escalation requested: %s", reason)
     return (
-        "I've flagged this for a team member — someone will reach out shortly. "
+        "I've flagged this for a team member â€” someone will reach out shortly. "
         "Is there anything else I can help with in the meantime?"
     )
 
@@ -534,8 +534,8 @@ _DISPATCH = {
 def execute_tool(name: str, args: dict | None, session=None) -> str:
     """Run a tool by name, returning a string for the LLM. Never raises.
 
-    Wrapped in a Langfuse "tool" observation (when enabled) so each call —
-    pricing, saving an order, escalating — is independently visible/timeable
+    Wrapped in a Langfuse "tool" observation (when enabled) so each call â€”
+    pricing, saving an order, escalating â€” is independently visible/timeable
     in the trace tree, not just reconstructable after the fact from the next
     LLM call's message history."""
     fn = _DISPATCH.get(name)

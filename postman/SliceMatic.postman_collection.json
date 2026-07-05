@@ -1,11 +1,11 @@
-{
+﻿{
   "info": {
     "name": "SliceMatic AI API",
-    "description": "REST + conversational endpoints for the SliceMatic ordering system (ai/main.py). Set {{base_url}} (default http://localhost:7860). See docs/API.md.",
+    "description": "REST + conversational endpoints for the SliceMatic ordering system (ai/main.py). Set {{base_url}} (default http://localhost:7861). See docs/API.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:7860" },
+    { "key": "base_url", "value": "http://localhost:7861" },
     { "key": "session_id", "value": "demo-session-1" }
   ],
   "item": [

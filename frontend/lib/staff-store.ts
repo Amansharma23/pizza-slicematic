@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { create } from "zustand";
 
@@ -14,20 +14,20 @@ import {
 } from "@/lib/api";
 
 /**
- * Staff kiosk POS store — the (staff) surface's own state slice.
+ * Staff kiosk POS store â€” the (staff) surface's own state slice.
  *
  * Deliberately independent from lib/menu-store.ts (the customer slice) per the
  * surface-isolation seam in CLAUDE.md: staff state can evolve (held orders,
- * shift info, …) without touching — or being able to break — the customer app.
+ * shift info, â€¦) without touching â€” or being able to break â€” the customer app.
  * All money is server-priced via /api/cart/price; nothing is computed here.
  */
 
 export const MAX_TOPPINGS = 3;
 
-/** POS flow, modelled on the graded Gradio app: details → build → pay → done. */
+/** POS flow: details -> build -> pay -> done. */
 export type PosStep = "details" | "build" | "payment" | "done";
 
-/** How the walk-in is being served — staff-only, frontend-only (not sent to
+/** How the walk-in is being served â€” staff-only, frontend-only (not sent to
  *  the API; core/ and the DB schema are untouched). Dine In is the default. */
 export type OrderType = "dine_in" | "takeaway";
 
@@ -60,13 +60,13 @@ interface StaffPosState {
   step: PosStep;
   setStep: (step: PosStep) => void;
 
-  // Customer details (Gradio "details" step — validated by the components
+  // Customer details, validated by the components and core rules.
   // with the same core rules; re-validated server-side at checkout).
   customerName: string;
   customerPhone: string;
   setCustomer: (name: string, phone: string) => void;
 
-  // Order type — required before the build step; defaults to Dine In.
+  // Order type â€” required before the build step; defaults to Dine In.
   orderType: OrderType;
   setOrderType: (type: OrderType) => void;
 
@@ -76,7 +76,7 @@ interface StaffPosState {
   menuError: string | null;
   loadMenu: () => Promise<void>;
 
-  // Live bulk-discount rule (/api/config — the admin can change it at runtime;
+  // Live bulk-discount rule (/api/config â€” the admin can change it at runtime;
   // the UI reads it so badges/hints never show a stale rate). Server defaults.
   discountRate: number;
   discountThreshold: number;
@@ -124,7 +124,7 @@ export const useStaffPos = create<StaffPosState>((set, get) => ({
     const { menuStatus } = get();
     if (menuStatus === "loading" || menuStatus === "ready") return;
     set({ menuStatus: "loading", menuError: null });
-    // Best-effort config refresh — pricing itself is always server-computed,
+    // Best-effort config refresh â€” pricing itself is always server-computed,
     // this only keeps the discount badge/hint copy honest.
     getConfig()
       .then((cfg) =>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { UtensilsCrossed } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -16,11 +16,11 @@ import type { MenuItem } from "@/lib/api";
 import { useStaffPos } from "@/lib/staff-store";
 
 /**
- * Staff kiosk POS — desktop-wide, touch-first. Two panes: the flow pane
- * (details → menu/customize → payment → done) and a persistent order-ticket
+ * Staff kiosk POS â€” desktop-wide, touch-first. Two panes: the flow pane
+ * (details â†’ menu/customize â†’ payment â†’ done) and a persistent order-ticket
  * sidebar. While no order is in progress (the details step), the sidebar
  * shows recent orders instead of an empty state (see order-ticket.tsx +
- * recent-orders.tsx). Flow modelled on the graded Gradio ordering app;
+ * recent-orders.tsx). Flow modelled on the staff POS ordering path;
  * pricing and checkout go through the same /api/cart/* endpoints as the
  * customer app.
  */
@@ -48,7 +48,7 @@ export default function StaffPosPage() {
     if (step === "payment") return <PosPayment />;
     if (step === "done") return <PosConfirmation />;
 
-    // step === "build" — menu grid, or the customize panel for the tapped pizza.
+    // step === "build" â€” menu grid, or the customize panel for the tapped pizza.
     if (menuStatus === "loading" || menuStatus === "idle") {
       return (
         <div className="grid h-full grid-cols-3 gap-4 p-6">
@@ -92,7 +92,7 @@ export default function StaffPosPage() {
   return (
     <div className="flex h-full min-h-0">
       <main className="min-w-0 flex-1">{flowPane()}</main>
-      {/* Fixed width — the kiosk frame is capped at tablet size (max-w-5xl),
+      {/* Fixed width â€” the kiosk frame is capped at tablet size (max-w-5xl),
           so viewport breakpoints would misfire here. */}
       {step !== "done" && (
         <div className="w-[340px] shrink-0">
