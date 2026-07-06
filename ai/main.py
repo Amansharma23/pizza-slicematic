@@ -98,6 +98,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import Request
+from fastapi.responses import Response
+
+@app.middleware("http")
+async def force_cors_headers(request: Request, call_next):
+    if request.method == "OPTIONS":
+        response = Response(status_code=204)
+    else:
+        response = await call_next(request)
+
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get(
+        "origin",
+        "https://pizza-slicematic-one.vercel.app",
+    )
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
+
 app.include_router(api_router)  # /api/* (menu, summary, order, analytics, ...)
 from ai.realtime import router as realtime_router
 app.include_router(realtime_router, prefix="/api")
