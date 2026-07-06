@@ -742,7 +742,7 @@ export async function upsertAdminDiscount(rule: {
 }
 
 export async function deleteAdminDiscount(ruleId: string): Promise<{ ok: boolean }> {
-  return adminJSON(`/admin/discounts/${encodeURIComponent(ruleId)}`, "DELETE");
+  return adminJSON(`/admin/discounts/${encodeURIComponent(ruleId)}`, "DELETE", {});
 }
 
 export async function getAdminStaff(): Promise<{
@@ -791,21 +791,34 @@ export async function getAdminPayments(): Promise<{
   return adminGet("/admin/payments");
 }
 
-export async function getAdminRefundsList(): Promise<{ok: boolean, refunds: AdminRefund[]}> {
+export interface AdminRefundResponse {
+  id: string;
+  order_id: string;
+  order_no: string;
+  customer_name: string;
+  customer_id: string;
+  reason: string;
+  status: string;
+  refund_amount: number;
+  admin_response: string | null;
+  requested_at: string;
+}
+
+export async function getAdminRefundsList(): Promise<{ok: boolean, refunds: AdminRefundResponse[]}> {
   return adminGet("/admin/refunds");
 }
 
 export async function approveAdminRefund(
   refundId: string,
   reason: string
-): Promise<{ ok: boolean; refund: AdminRefund }> {
+): Promise<{ ok: boolean; refund: AdminRefundResponse }> {
   return adminJSON(`/admin/refunds/${refundId}/approve`, "POST", { admin_response: reason });
 }
 
 export async function rejectAdminRefund(
   refundId: string,
   reason: string
-): Promise<{ ok: boolean; refund: AdminRefund }> {
+): Promise<{ ok: boolean; refund: AdminRefundResponse }> {
   return adminJSON(`/admin/refunds/${refundId}/reject`, "POST", { admin_response: reason });
 }
 

@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { UserOrder, API_BASE, ApiError } from "@/lib/api";
+import { UserOrder, API_BASE } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +22,7 @@ interface RefundModalProps {
 
 export function RefundModal({ order, open, onOpenChange }: RefundModalProps) {
   const [loading, setLoading] = useState(false);
-  const [refundStatus, setRefundStatus] = useState<any>(null);
+  const [refundStatus, setRefundStatus] = useState<{ status: string; reason?: string; admin_response?: string } | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const token = useAuthStore((s) => s.token);
@@ -85,8 +85,12 @@ export function RefundModal({ order, open, onOpenChange }: RefundModalProps) {
         throw new Error(data.errors?.time || data.errors?.db || data.errors?.order || "Failed to submit refund request.");
       }
       setRefundStatus(data.refund);
-    } catch (err: any) {
-      setError(err.message || "An error occurred.");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message || "An error occurred.");
+      } else {
+        setError("An error occurred.");
+      }
     } finally {
       setLoading(false);
     }
@@ -109,7 +113,7 @@ export function RefundModal({ order, open, onOpenChange }: RefundModalProps) {
             <div className="space-y-3 rounded-lg border p-4 bg-surface-2">
               <div className="flex items-center justify-between">
                 <span className="font-medium">Status</span>
-                <Badge variant={refundStatus.status === "REQUESTED" ? "secondary" : refundStatus.status === "APPROVED" ? "default" : "destructive"}>
+                <Badge variant={refundStatus.status === "REQUESTED" ? "default" : refundStatus.status === "APPROVED" ? "success" : "destructive"}>
                   {refundStatus.status}
                 </Badge>
               </div>

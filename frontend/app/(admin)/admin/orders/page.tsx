@@ -64,19 +64,19 @@ export default function AdminOrdersPage() {
 
   const sortedOrders = useMemo(() => {
     if (state.status !== "ready") return [];
-    let sortableItems = [...state.orders];
+    const sortableItems = [...state.orders];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
-        let aValue = (a as any)[sortConfig.key];
-        let bValue = (b as any)[sortConfig.key];
+        let aValue = (a as unknown as Record<string, unknown>)[sortConfig.key];
+        let bValue = (b as unknown as Record<string, unknown>)[sortConfig.key];
         
         if (aValue === null || aValue === undefined) aValue = "";
         if (bValue === null || bValue === undefined) bValue = "";
 
-        if (aValue < bValue) {
+        if ((aValue as string) < (bValue as string)) {
           return sortConfig.direction === "asc" ? -1 : 1;
         }
-        if (aValue > bValue) {
+        if ((aValue as string) > (bValue as string)) {
           return sortConfig.direction === "asc" ? 1 : -1;
         }
         return 0;

@@ -1,7 +1,13 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-const Dialog = ({ open, onOpenChange, children }: any) => {
+interface DialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: React.ReactNode;
+}
+
+const Dialog = ({ open, onOpenChange, children }: DialogProps) => {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 p-2 bg-black/50 print:static print:bg-white print:p-0">
