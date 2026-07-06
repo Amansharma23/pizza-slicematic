@@ -175,13 +175,13 @@ def get_dashboard_metrics() -> dict:
 
             cur.execute(
                 """
-                select item->>'pizza' as name,
+                select item->>'item_name' as name,
                        coalesce(sum((item->>'quantity')::int), 0)::int as quantity
                 from public.orders o
                 cross join lateral jsonb_array_elements(coalesce(o.items, '[]'::jsonb)) item
                 where o.created_at >= now() - interval '30 days'
-                  and item ? 'pizza'
-                group by item->>'pizza'
+                  and item->>'size_code' is not null
+                group by item->>'item_name'
                 order by quantity desc, name
                 limit 5
                 """
@@ -456,7 +456,7 @@ def get_order_detail(order_id: str) -> dict:
             payments = _many(cur)
             cur.execute(
                 """
-                select id, amount, reason, status, requested_at, decided_at
+                select id, refund_amount as amount, reason, status, requested_at, reviewed_at as decided_at
                 from public.refunds
                 where order_id = %s
                 order by requested_at desc
@@ -725,8 +725,8 @@ def list_payments_and_refunds() -> dict:
             payments = _many(cur)
             cur.execute(
                 """
-                select r.id, o.order_no, o.customer_name, r.amount, r.reason,
-                       r.status, r.requested_at, r.decided_at
+                select r.id, o.order_no, o.customer_name, r.refund_amount as amount, r.reason,
+                       r.status, r.requested_at, r.reviewed_at as decided_at
                 from public.refunds r
                 join public.orders o on o.id = r.order_id
                 order by r.requested_at desc
@@ -777,10 +777,10 @@ def request_refund(
             cur.execute(
                 """
                 insert into public.refunds (
-                    order_id, payment_id, amount, reason, requested_by
+                    order_id, payment_id, refund_amount, reason, requested_by
                 )
                 values (%s, %s, %s, %s, %s)
-                returning id, amount, reason, status, requested_at
+                returning id, refund_amount as amount, reason, status, requested_at
                 """,
                 (order_id, order["payment_id"], amount, reason.strip(), performed_by),
             )
@@ -816,7 +816,7 @@ def decide_refund(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select r.id, r.order_id, r.payment_id, r.amount, r.status,
+                select r.id, r.order_id, r.payment_id, r.refund_amount as amount, r.status,
                        o.status as order_status
                 from public.refunds r
                 join public.orders o on o.id = r.order_id
@@ -836,9 +836,9 @@ def decide_refund(
             cur.execute(
                 """
                 update public.refunds
-                set status = %s, approved_by = %s, decided_at = now()
+                set status = %s, reviewed_by = %s, reviewed_at = now()
                 where id = %s
-                returning id, amount, reason, status, requested_at, decided_at
+                returning id, refund_amount as amount, reason, status, requested_at, reviewed_at as decided_at
                 """,
                 (status, performed_by, refund_id),
             )
@@ -1826,6 +1826,26 @@ def update_pricing_settings(
                 reason=reason,
             )
     return get_pricing_settings()
+
+
+def delete_discount_rule(rule_id: str, performed_by: str) -> None:
+    _ensure_postgres()
+    with postgres.connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("select id from public.discount_rules where id = %s", (rule_id,))
+            if not _one(cur):
+                raise LookupError("Discount rule not found.")
+            cur.execute("delete from public.discount_rules where id = %s", (rule_id,))
+            _audit(
+                cur,
+                action_type="discount.deleted",
+                entity_type="discount_rule",
+                entity_id=rule_id,
+                old_value=None,
+                new_value=None,
+                performed_by=performed_by,
+                reason="Deleted from admin panel",
+            )
 
 
 def upsert_discount_rule(

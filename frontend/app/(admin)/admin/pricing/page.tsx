@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, RefreshCw, Save, Sparkles } from "lucide-react";
+import { CalendarDays, RefreshCw, Save, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -8,6 +8,7 @@ import {
   getAdminPricing,
   getFestivalCouponSuggestions,
   upsertAdminDiscount,
+  deleteAdminDiscount,
   updateAdminPricing,
   type AdminFestivalCouponSuggestion,
   type AdminPriceHistoryEntry,
@@ -114,6 +115,16 @@ export default function AdminPricingPage() {
     }
   }
 
+  async function deleteRule(ruleId: string) {
+    setDiscountSaving(ruleId);
+    try {
+      await deleteAdminDiscount(ruleId);
+      await load();
+    } finally {
+      setDiscountSaving(null);
+    }
+  }
+
   async function createRule() {
     setDiscountSaving("new");
     try {
@@ -210,6 +221,7 @@ export default function AdminPricingPage() {
           onUseFestival={useFestivalSuggestion}
           onSuggestionYearChange={setSuggestionYear}
           onSaveRule={saveRule}
+          onDeleteRule={deleteRule}
           onRuleChange={(rule) =>
             setState((current) =>
               current.status === "ready"
@@ -313,6 +325,7 @@ function CouponsModule({
   onUseFestival,
   onSuggestionYearChange,
   onSaveRule,
+  onDeleteRule,
   onRuleChange,
 }: {
   newRule: ReturnType<typeof emptyCoupon>;
@@ -327,6 +340,7 @@ function CouponsModule({
   onUseFestival: (suggestion: AdminFestivalCouponSuggestion) => void;
   onSuggestionYearChange: (year: number) => void;
   onSaveRule: (rule: AdminPricing["discount_rules"][number]) => Promise<void>;
+  onDeleteRule: (ruleId: string) => Promise<void>;
   onRuleChange: (rule: AdminPricing["discount_rules"][number]) => void;
 }) {
   return (
@@ -569,15 +583,29 @@ function CouponsModule({
                       </button>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={saving === rule.id}
-                        onClick={() => void onSaveRule(rule)}
-                      >
-                        <Save />
-                        Save
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={saving === rule.id}
+                          onClick={() => void onSaveRule(rule)}
+                        >
+                          <Save />
+                          Save
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="destructive"
+                          disabled={saving === rule.id}
+                          onClick={() => {
+                            if (confirm(`Delete coupon ${rule.coupon_code}?`)) {
+                              void onDeleteRule(rule.id);
+                            }
+                          }}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))

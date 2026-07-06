@@ -1,7 +1,7 @@
 "use client";
 
-import { Download, Eye, Filter, RotateCcw, Save, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Download, Eye, Filter, RotateCcw, Save, X } from "lucide-react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 
 import {
   getAdminOrderDetail,
@@ -52,6 +52,38 @@ export default function AdminOrdersPage() {
     | { status: "error"; message: string }
     | { status: "ready"; data: AdminOrderDetail }
   >({ status: "idle" });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+
+  const requestSort = (key: string) => {
+    let direction: "asc" | "desc" = "asc";
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedOrders = useMemo(() => {
+    if (state.status !== "ready") return [];
+    let sortableItems = [...state.orders];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aValue = (a as any)[sortConfig.key];
+        let bValue = (b as any)[sortConfig.key];
+        
+        if (aValue === null || aValue === undefined) aValue = "";
+        if (bValue === null || bValue === undefined) bValue = "";
+
+        if (aValue < bValue) {
+          return sortConfig.direction === "asc" ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === "asc" ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [state, sortConfig]);
 
   const load = useCallback(async (nextFilters: AdminOrderFilters) => {
     setState({ status: "loading" });
@@ -170,6 +202,17 @@ export default function AdminOrdersPage() {
   if (state.status === "error") {
     return <AdminError message={state.message} onRetry={() => void load(filters)} />;
   }
+
+  const SortIcon = ({ columnKey }: { columnKey: string }) => {
+    if (!sortConfig || sortConfig.key !== columnKey) {
+      return <ArrowDown className="ml-1 inline-block h-3 w-3 opacity-20" />;
+    }
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp className="ml-1 inline-block h-3 w-3" />
+    ) : (
+      <ArrowDown className="ml-1 inline-block h-3 w-3" />
+    );
+  };
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
@@ -296,18 +339,18 @@ export default function AdminOrdersPage() {
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead className="bg-surface-2 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-4 py-3">Order</th>
-                <th className="px-4 py-3">Customer</th>
+                <th className="cursor-pointer px-4 py-3 hover:bg-surface-3 transition-colors" onClick={() => requestSort("order_no")}>Order <SortIcon columnKey="order_no" /></th>
+                <th className="cursor-pointer px-4 py-3 hover:bg-surface-3 transition-colors" onClick={() => requestSort("customer_name")}>Customer <SortIcon columnKey="customer_name" /></th>
                 <th className="px-4 py-3">Items</th>
-                <th className="px-4 py-3">Payment</th>
-                <th className="px-4 py-3">Bill</th>
-                <th className="px-4 py-3">Status</th>
+                <th className="cursor-pointer px-4 py-3 hover:bg-surface-3 transition-colors" onClick={() => requestSort("payment_mode")}>Payment <SortIcon columnKey="payment_mode" /></th>
+                <th className="cursor-pointer px-4 py-3 hover:bg-surface-3 transition-colors" onClick={() => requestSort("total")}>Bill <SortIcon columnKey="total" /></th>
+                <th className="cursor-pointer px-4 py-3 hover:bg-surface-3 transition-colors" onClick={() => requestSort("status")}>Status <SortIcon columnKey="status" /></th>
                 <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
-              {state.orders.length ? (
-                state.orders.map((order) => (
+              {sortedOrders.length ? (
+                sortedOrders.map((order) => (
                   <OrderRow
                     key={order.id}
                     order={order}

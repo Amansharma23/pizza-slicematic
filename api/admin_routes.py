@@ -471,6 +471,18 @@ def upsert_discount_rule(
     return {"ok": True, "discount": rule}
 
 
+@router.delete("/discounts/{rule_id}")
+def delete_discount_rule(
+    rule_id: str,
+    user: dict = Depends(require_permission("discounts.manage")),
+) -> dict:
+    try:
+        admin_db.delete_discount_rule(rule_id=rule_id, performed_by=user["id"])
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
 @router.put("/pricing")
 def update_pricing_settings(
     req: PricingUpdate,

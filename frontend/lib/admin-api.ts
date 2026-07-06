@@ -741,6 +741,10 @@ export async function upsertAdminDiscount(rule: {
   return adminJSON("/admin/discounts", "PUT", rule);
 }
 
+export async function deleteAdminDiscount(ruleId: string): Promise<{ ok: boolean }> {
+  return adminJSON(`/admin/discounts/${encodeURIComponent(ruleId)}`, "DELETE");
+}
+
 export async function getAdminStaff(): Promise<{
   ok: boolean;
   staff: AdminStaffMember[];
@@ -785,6 +789,24 @@ export async function getAdminPayments(): Promise<{
   refunds: AdminRefund[];
 }> {
   return adminGet("/admin/payments");
+}
+
+export async function getAdminRefundsList(): Promise<{ok: boolean, refunds: AdminRefund[]}> {
+  return adminGet("/admin/refunds");
+}
+
+export async function approveAdminRefund(
+  refundId: string,
+  reason: string
+): Promise<{ ok: boolean; refund: AdminRefund }> {
+  return adminJSON(`/admin/refunds/${refundId}/approve`, "POST", { admin_response: reason });
+}
+
+export async function rejectAdminRefund(
+  refundId: string,
+  reason: string
+): Promise<{ ok: boolean; refund: AdminRefund }> {
+  return adminJSON(`/admin/refunds/${refundId}/reject`, "POST", { admin_response: reason });
 }
 
 export async function requestAdminRefund(

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/auth-store";
-import { API_BASE, ApiError } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
+import { getAdminRefundsList, approveAdminRefund, rejectAdminRefund } from "@/lib/admin-api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,13 +43,8 @@ export default function RefundsPage() {
   }, [token]);
 
   const fetchRefunds = async () => {
-    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/api/admin/refunds`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load refunds");
+      const data = await getAdminRefundsList();
       setRefunds(data.refunds || []);
     } catch (err: any) {
       setError(err.message);
@@ -67,17 +62,10 @@ export default function RefundsPage() {
 
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/refunds/${activeRefund.id}/${actionType.toLowerCase()}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ admin_response: adminResponse || "Refund Approved." })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Action failed");
-      
+      const data = actionType === "APPROVE" 
+        ? await approveAdminRefund(activeRefund.id, adminResponse || "Refund Approved.")
+        : await rejectAdminRefund(activeRefund.id, adminResponse);
+        
       // Update local state
       setRefunds((prev) =>
         prev.map((r) => (r.id === activeRefund.id ? { ...r, ...data.refund } : r))

@@ -13,9 +13,10 @@ interface BillItem {
 }
 
 interface BillLine {
-  base: BillItem;
-  pizza: BillItem;
+  item: BillItem;
+  crust?: BillItem | null;
   toppings: BillItem[];
+  size_code?: string;
   quantity: number;
   unit_price: number;
   subtotal: number;
@@ -165,13 +166,15 @@ export function ChatBubble({ message }: { message: ChatMessage }) {
                         <div key={idx} className="flex flex-col text-sm">
                           {/* Items Breakdown */}
                           <div className="flex flex-col gap-1 pb-3">
+                            {line.crust && (
+                              <div className="flex justify-between">
+                                <span>{line.crust.name}</span>
+                                <span>{line.crust.price.toFixed(2)}</span>
+                              </div>
+                            )}
                             <div className="flex justify-between">
-                              <span>{line.base.name}</span>
-                              <span>{line.base.price.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>{line.pizza.name}</span>
-                              <span>{line.pizza.price.toFixed(2)}</span>
+                              <span>{line.item.name} {line.size_code ? `(${line.size_code})` : ''}</span>
+                              <span>{line.item.price.toFixed(2)}</span>
                             </div>
                             {line.toppings.map((t, tidx) => (
                               <div key={tidx} className="flex justify-between">

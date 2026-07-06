@@ -61,11 +61,11 @@ def cart_line_to_dict(b_item: BillItem):
     total = round(subtotal + gst, 2)
     discount = 0.0  # line-level discount; overall discount is in the cart totals
     return {
-        "item": {"id": b_item.item.id, "name": b_item.item.name, "price": b_item.item.price},
+        "item": {"id": str(b_item.item.id), "name": b_item.item.name, "price": b_item.item.price},
         "item_type": b_item.item.item_type,
         "size_code": b_item.size_code,
-        "crust": {"id": b_item.crust.id, "name": b_item.crust.name, "price": b_item.crust.price} if b_item.crust else None,
-        "toppings": [{"id": t.id, "name": t.name, "price": t.price} for t in b_item.toppings],
+        "crust": {"id": str(b_item.crust.id), "name": b_item.crust.name, "price": b_item.crust.price} if b_item.crust else None,
+        "toppings": [{"id": str(t.id), "name": t.name, "price": t.price} for t in b_item.toppings],
         "quantity": b_item.quantity,
         "unit_price": b_item.unit_price,
         "subtotal": subtotal,

@@ -488,6 +488,14 @@ function MenuRow({
   onSave: (item: AdminMenuItem) => Promise<void>;
   onDelete: (item: AdminMenuItem) => void;
 }) {
+  const [original, setOriginal] = useState(item);
+  const isDirty = item.name !== original.name || item.price !== original.price || item.is_available !== original.is_available || item.image_url !== original.image_url;
+
+  const handleSave = async (itemToSave: AdminMenuItem) => {
+    await onSave(itemToSave);
+    setOriginal(itemToSave);
+  };
+
   return (
     <tr className="border-t border-border">
       <td className="px-4 py-3 font-medium">{item.item_code}</td>
@@ -526,8 +534,9 @@ function MenuRow({
                 try {
                   const res = await uploadAdminMenuItemPhoto(item.id, file);
                   if (res.ok) {
-                    onChange({ ...item, image_url: res.image_url });
-                    await onSave({ ...item, image_url: res.image_url });
+                    const next = { ...item, image_url: res.image_url };
+                    onChange(next);
+                    await handleSave(next);
                   }
                 } catch (err) {
                   alert(err instanceof Error ? err.message : "Upload failed");
@@ -565,7 +574,8 @@ function MenuRow({
             size="sm"
             variant="secondary"
             disabled={saving}
-            onClick={() => void onSave(item)}
+            className={isDirty ? "animate-pulse border border-primary shadow-[0_0_8px_rgba(234,88,12,0.6)]" : ""}
+            onClick={() => void handleSave(item)}
           >
             <Save />
             Save
