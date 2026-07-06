@@ -18,6 +18,7 @@ class MenuItemUpdate(BaseModel):
     name: str
     price: float
     is_available: bool = True
+    image_url: str | None = None
     reason: str | None = None
 
 
@@ -385,6 +386,7 @@ def update_menu_item(
             name=req.name,
             price=req.price,
             is_available=req.is_available,
+            image_url=req.image_url,
             performed_by=user["id"],
             reason=req.reason,
         )

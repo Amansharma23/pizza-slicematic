@@ -653,6 +653,7 @@ export async function updateAdminOrderStatus(
 
 export async function updateAdminMenuItem(
   item: Pick<AdminMenuItem, "id" | "name" | "price" | "is_available"> & {
+    image_url?: string | null;
     reason?: string;
   }
 ): Promise<{ ok: boolean; item: AdminMenuItem }> {
@@ -660,6 +661,7 @@ export async function updateAdminMenuItem(
     name: item.name,
     price: item.price,
     is_available: item.is_available,
+    image_url: item.image_url,
     reason: item.reason,
   });
 }
@@ -1049,7 +1051,7 @@ export async function uploadAdminMenuItemPhoto(
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/admin/menu/upload`, {
+  const res = await fetch(`${API_BASE}/api/admin/menu/upload`, {
     method: "POST",
     headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
     body: formData,

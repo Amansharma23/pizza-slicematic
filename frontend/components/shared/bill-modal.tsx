@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { UserOrder } from "@/lib/api";
 import { formatINR, roundFinalAmount } from "@/lib/utils";
-import { Download, Printer } from "lucide-react";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface BillModalProps {
@@ -57,16 +57,49 @@ export function BillModal({ order, open, onOpenChange }: BillModalProps) {
                   <tr key={idx} className="group">
                     <td className="py-3 pr-2">
                       <div className="font-medium">{item.item_name} {item.size_code && `(${item.size_code})`}</div>
-                      {item.crust && (
-                        <div className="text-xs text-muted-foreground print:text-black">Crust: {item.crust}</div>
-                      )}
-                      {!item.crust && item.item_type && (
-                        <div className="text-xs text-muted-foreground print:text-black">Type: {item.item_type}</div>
-                      )}
-                      {item.toppings && item.toppings.length > 0 && (
-                        <div className="text-xs text-muted-foreground print:text-black">
-                          + {item.toppings.join(", ")}
+                      {item.toppings_breakdown ? (
+                        <div className="mt-1 space-y-0.5">
+                          <div className="flex justify-between text-xs text-muted-foreground print:text-black">
+                            <span>Base</span>
+                            <span>{formatINR(item.base_price || 0)}</span>
+                          </div>
+                          {item.crust && (
+                            <div className="flex justify-between text-xs text-muted-foreground print:text-black">
+                              <span>Crust: {item.crust}</span>
+                              <span>{formatINR(item.crust_price || 0)}</span>
+                            </div>
+                          )}
+                          {!item.crust && item.item_type && (
+                            <div className="text-xs text-muted-foreground print:text-black">Type: {item.item_type}</div>
+                          )}
+                          {(() => {
+                            const toppingCounts = item.toppings_breakdown.reduce((acc, t) => {
+                              if (!acc[t.name]) acc[t.name] = { count: 0, price: t.price };
+                              acc[t.name].count++;
+                              return acc;
+                            }, {} as Record<string, { count: number; price: number }>);
+                            return Object.entries(toppingCounts).map(([name, { count, price }]) => (
+                              <div key={name} className="flex justify-between text-xs text-muted-foreground print:text-black">
+                                <span>+ {name} {count > 1 ? `x${count}` : ''}</span>
+                                <span>{formatINR(price * count)}</span>
+                              </div>
+                            ));
+                          })()}
                         </div>
+                      ) : (
+                        <>
+                          {item.crust && (
+                            <div className="text-xs text-muted-foreground print:text-black">Crust: {item.crust}</div>
+                          )}
+                          {!item.crust && item.item_type && (
+                            <div className="text-xs text-muted-foreground print:text-black">Type: {item.item_type}</div>
+                          )}
+                          {item.toppings && item.toppings.length > 0 && (
+                            <div className="text-xs text-muted-foreground print:text-black">
+                              + {item.toppings.join(", ")}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="py-3 text-right align-top">{item.quantity}</td>

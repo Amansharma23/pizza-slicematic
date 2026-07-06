@@ -597,6 +597,14 @@ def checkout_cart(req: CheckoutReq):
     
     items = []
     for b_item in resolved_items:
+        base_p = next((s.price for s in b_item.item.sizes if s.size_code == b_item.size_code), 0.0) if b_item.size_code else b_item.item.price
+        crust_p = (next((s.price for s in b_item.crust.sizes if s.size_code == b_item.size_code), b_item.crust.price) if b_item.size_code else b_item.crust.price) if b_item.crust else 0.0
+        
+        toppings_bd = []
+        for t in b_item.toppings:
+            t_p = next((s.price for s in t.sizes if s.size_code == b_item.size_code), t.price) if b_item.size_code else t.price
+            toppings_bd.append({"name": t.name, "price": t_p})
+
         items.append({
             "item_name": b_item.item.name,
             "item_type": b_item.item.item_type,
@@ -606,6 +614,9 @@ def checkout_cart(req: CheckoutReq):
             "quantity": b_item.quantity,
             "unit_price": b_item.unit_price,
             "line_total": b_item.subtotal,
+            "base_price": base_p,
+            "crust_price": crust_p,
+            "toppings_breakdown": toppings_bd,
         })
         
     totals = {
@@ -1057,27 +1068,49 @@ def get_analytics(
         "orders_df": data["orders_df"].to_dict(orient="records"),
     }
 
-import shutil
-from pathlib import Path
+import os
+import uuid
+from supabase import create_client
 
 @router.post("/admin/menu/upload")
 def upload_menu_image(file: UploadFile = File(...)):
-    """Upload a menu image to public/uploads directory."""
-    # Ensure directory exists
-    frontend_dir = Path("f:/FDE Project/Hackathon 3/slicematic/frontend")
-    upload_dir = frontend_dir / "public" / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Secure filename
-    import uuid
-    ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
-    filename = f"{uuid.uuid4()}.{ext}"
-    file_path = upload_dir / filename
-    
+    """Upload a menu image directly to Supabase Storage."""
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+
+    if not supabase_url or not supabase_key:
+        return {
+            "ok": False,
+            "error": "Supabase storage is not configured. Missing SUPABASE_URL or SUPABASE_SERVICE_KEY.",
+        }
+
     try:
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        # Return URL relative to public directory
-        return {"ok": True, "image_url": f"/uploads/{filename}"}
+        client = create_client(supabase_url, supabase_key)
+
+        ext = file.filename.split(".")[-1].lower() if file.filename and "." in file.filename else "png"
+        filename = f"{uuid.uuid4()}.{ext}"
+
+        file_bytes = file.file.read()
+
+        client.storage.from_("menu-images").upload(
+            path=filename,
+            file=file_bytes,
+            file_options={
+                "content-type": file.content_type or "image/png",
+                "upsert": "false",
+            },
+        )
+
+        public_url = client.storage.from_("menu-images").get_public_url(filename)
+
+        return {
+            "ok": True,
+            "image_url": public_url,
+        }
+
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {
+            "ok": False,
+            "error": str(e),
+        }

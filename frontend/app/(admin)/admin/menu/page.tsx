@@ -83,6 +83,7 @@ export default function AdminMenuPage() {
         name: item.name,
         price: Number(item.price),
         is_available: item.is_available,
+        image_url: item.image_url,
         reason: "Admin menu update",
       });
       setState((current) =>
@@ -502,12 +503,12 @@ function MenuRow({
             <Image
               src={item.image_url}
               alt={item.name}
-              width={40}
-              height={40}
-              className="rounded-md object-cover"
+              width={80}
+              height={80}
+              className="rounded-md object-cover size-20"
             />
           ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-surface-2 text-xs text-muted-foreground">
+            <div className="flex size-20 items-center justify-center rounded-md bg-surface-2 text-xs text-muted-foreground">
               None
             </div>
           )}

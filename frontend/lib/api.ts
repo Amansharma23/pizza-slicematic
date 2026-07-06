@@ -436,6 +436,9 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   line_total: number;
+  base_price?: number;
+  crust_price?: number;
+  toppings_breakdown?: { name: string; price: number }[];
 }
 
 export interface UserOrder {

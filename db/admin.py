@@ -1571,6 +1571,7 @@ def update_menu_item(
     name: str,
     price: float,
     is_available: bool,
+    image_url: str | None = None,
     performed_by: str,
     reason: str | None = None,
 ) -> dict:
@@ -1595,16 +1596,28 @@ def update_menu_item(
             old = _one(cur)
             if not old:
                 raise LookupError("Menu item not found.")
-            cur.execute(
-                """
-                update public.menu_items
-                set name = %s, price = %s, is_available = %s, updated_at = now()
-                where id = %s
-                returning id, item_code, category_id, name, price,
-                          is_available, updated_at
-                """,
-                (name.strip(), price, is_available, item_id),
-            )
+            if image_url is not None:
+                cur.execute(
+                    """
+                    update public.menu_items
+                    set name = %s, price = %s, is_available = %s, image_url = %s, updated_at = now()
+                    where id = %s
+                    returning id, item_code, category_id, name, price, image_url,
+                              is_available, updated_at
+                    """,
+                    (name.strip(), price, is_available, image_url, item_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    update public.menu_items
+                    set name = %s, price = %s, is_available = %s, updated_at = now()
+                    where id = %s
+                    returning id, item_code, category_id, name, price, image_url,
+                              is_available, updated_at
+                    """,
+                    (name.strip(), price, is_available, item_id),
+                )
             updated = _one(cur)
             cur.execute(
                 "select code as category, name as category_name from public.menu_categories where id = %s",

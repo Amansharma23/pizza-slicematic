@@ -652,6 +652,7 @@ def update_menu_item(
     name: str,
     price: float,
     is_available: bool,
+    image_url: str | None = None,
     performed_by: str,
     reason: str | None = None,
 ) -> dict:
@@ -666,18 +667,21 @@ def update_menu_item(
     )
     if not old or old.get("is_deleted"):
         raise LookupError("Menu item not found.")
+        
+    update_data = {
+        "name": name.strip(),
+        "price": price,
+        "is_available": is_available,
+        "updated_at": _now(),
+    }
+    if image_url is not None:
+        update_data["image_url"] = image_url
+
     row = _one(
         execute_query(
             _client()
             .table("menu_items")
-            .update(
-                {
-                    "name": name.strip(),
-                    "price": price,
-                    "is_available": is_available,
-                    "updated_at": _now(),
-                }
-            )
+            .update(update_data)
             .eq("id", item_id)
         )
     )
