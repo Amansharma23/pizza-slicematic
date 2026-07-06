@@ -15,3 +15,8 @@ export function formatINR(amount: number): string {
     maximumFractionDigits: 2,
   }).format(amount);
 }
+
+/** Round .50 or more up, .49 or less down. */
+export function roundFinalAmount(amount: number): number {
+  return Math.floor(amount + 0.5);
+}

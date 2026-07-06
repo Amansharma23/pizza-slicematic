@@ -919,3 +919,46 @@ def update_settings(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, **updated}
+
+
+class AdminRefundAction(BaseModel):
+    admin_response: str
+
+@router.get("/refunds")
+def list_refunds(status: str | None = None, user: dict = Depends(require_permission("orders.read"))):
+    try:
+        from db import refunds
+        return {"ok": True, "refunds": refunds.list_refunds(status)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@router.post("/refunds/{refund_id}/approve")
+def approve_refund(refund_id: str, req: AdminRefundAction, user: dict = Depends(require_permission("orders.write"))):
+    try:
+        from db import refunds
+        from db import postgres
+        res = refunds.update_refund_status(refund_id, "APPROVED", req.admin_response, user["id"])
+        
+        # Mark order as refunded
+        order_id = res["order_id"]
+        if postgres.is_enabled():
+            with postgres.connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE public.orders SET status = 'refunded' WHERE id = %s", (order_id,))
+        else:
+            from db.client import execute_query, get_client
+            client = get_client()
+            execute_query(client.table("orders").update({"status": "refunded"}).eq("id", order_id))
+            
+        return {"ok": True, "refund": res}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@router.post("/refunds/{refund_id}/reject")
+def reject_refund(refund_id: str, req: AdminRefundAction, user: dict = Depends(require_permission("orders.write"))):
+    try:
+        from db import refunds
+        res = refunds.update_refund_status(refund_id, "REJECTED", req.admin_response, user["id"])
+        return {"ok": True, "refund": res}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

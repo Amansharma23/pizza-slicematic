@@ -26,7 +26,7 @@ import {
   validateCoupon,
 } from "@/lib/api";
 import { toPayload, useStaffPos } from "@/lib/staff-store";
-import { cn, formatINR } from "@/lib/utils";
+import { cn, formatINR, roundFinalAmount } from "@/lib/utils";
 
 // ── Coupon picker popup (same as customer checkout) ────────────────────────
 
@@ -452,7 +452,7 @@ export function PosPayment() {
             <span className="block text-xs text-muted-foreground">Total payable</span>
             <div className="flex items-baseline gap-1.5">
               <span className="font-heading text-xl font-bold tabular-nums">
-                {finalTotal != null ? formatINR(finalTotal) : "…"}
+                {finalTotal != null ? formatINR(roundFinalAmount(finalTotal)) : "…"}
               </span>
               {finalSavings > 0 && (
                 <span className="text-xs font-medium text-green-600 dark:text-green-400">({formatINR(finalSavings)} saved)</span>
@@ -470,7 +470,7 @@ export function PosPayment() {
               ? "Placing…"
               : method.id === "cash"
                 ? "Place order"
-                : `Pay ${finalTotal != null ? formatINR(finalTotal) : ""}`}
+                : `Pay ${finalTotal != null ? formatINR(roundFinalAmount(finalTotal)) : ""}`}
           </Button>
         </div>
       </div>

@@ -10,10 +10,14 @@ import {
   Receipt,
   Star,
   MessageSquare,
+  RefreshCcw,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
+
+import { BillModal } from "@/components/shared/bill-modal";
+import { RefundModal } from "@/components/customer/refund-modal";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,6 +132,9 @@ function OrderCard({
   order: UserOrder;
   highlight?: boolean;
 }) {
+  const [showBill, setShowBill] = useState(false);
+  const [showRefund, setShowRefund] = useState(false);
+  
   const placedMs = Date.parse(order.created_at);
   const { index, step, steps } = orderStatus(order);
   const placedTime = Number.isNaN(placedMs)
@@ -215,6 +222,19 @@ function OrderCard({
           <span className="tabular-nums">{formatINR(order.total)}</span>
         </div>
       </div>
+
+      {/* Bill & Refund Actions */}
+      <div className="flex gap-2 border-t border-border p-4">
+        <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => setShowBill(true)}>
+          <Receipt className="size-4" /> View Bill
+        </Button>
+        <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => setShowRefund(true)}>
+          <RefreshCcw className="size-4" /> Ask Refund
+        </Button>
+      </div>
+
+      <BillModal open={showBill} onOpenChange={setShowBill} order={order} />
+      <RefundModal open={showRefund} onOpenChange={setShowRefund} order={order} />
 
       {/* Feedback section (only for delivered orders) */}
       {index === steps.length - 1 && (

@@ -56,9 +56,14 @@ def set_gst_rate(rate: float):
     _gst_rate = rate
     GST_RATE = rate
 
+import math
 
 def _money(value: float) -> float:
     return round(value, 2)
+
+def round_final_amount(amount: float) -> int:
+    """Round .50 or more up, .49 or less down as per business rules."""
+    return math.floor(amount + 0.5)
 
 
 def compute_bill(

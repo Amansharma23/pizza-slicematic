@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useMenuStore } from "@/lib/menu-store";
-import { formatINR } from "@/lib/utils";
+import { formatINR, roundFinalAmount } from "@/lib/utils";
 
 import { QuantityStepper } from "./quantity-stepper";
 
@@ -90,7 +90,7 @@ export function CartSheet({
               <div className="flex items-center justify-between border-t border-border pt-2 text-base font-bold">
                 <dt>Total</dt>
                 <dd className="tabular-nums">
-                  {totals ? formatINR(totals.total) : pricing ? "…" : "—"}
+                  {totals ? formatINR(roundFinalAmount(totals.total)) : pricing ? "…" : "—"}
                 </dd>
               </div>
             </dl>

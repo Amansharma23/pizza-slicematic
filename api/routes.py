@@ -1105,6 +1105,43 @@ def submit_order_feedback(order_no: str, req: FeedbackReq):
         "message": "Thank you for your feedback!",
     }
 
+class RefundReq(BaseModel):
+    customer_id: str
+    reason: str
+    refund_amount: float
+
+@router.get("/orders/{order_no}/refund")
+def get_order_refund(order_no: str):
+    try:
+        from db import refunds
+        res = refunds.get_refund_for_order(order_no)
+        return {"ok": True, "refund": res}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+
+@router.post("/orders/{order_no}/refund")
+def create_order_refund(order_no: str, req: RefundReq):
+    try:
+        from db import refunds
+        from db import postgres
+        if postgres.is_enabled():
+            with postgres.connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT created_at FROM public.orders WHERE order_no = %s", (order_no,))
+                    row = cur.fetchone()
+                    if not row:
+                        return {"ok": False, "errors": {"order": "Order not found."}}
+                    from datetime import datetime, timezone
+                    created = row[0]
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    if (datetime.now(timezone.utc) - created).total_seconds() > 86400:
+                        return {"ok": False, "errors": {"time": "Refunds are only allowed within 24 hours of placing the order."}}
+        
+        res = refunds.create_refund_request(order_no, req.customer_id, req.reason, req.refund_amount)
+        return {"ok": True, "refund": res}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
 
 @router.get("/config")
 def get_config():

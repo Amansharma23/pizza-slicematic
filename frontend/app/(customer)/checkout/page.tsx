@@ -30,7 +30,7 @@ import {
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { toPayload, useMenuStore } from "@/lib/menu-store";
-import { cn, formatINR } from "@/lib/utils";
+import { cn, formatINR, roundFinalAmount } from "@/lib/utils";
 
 const METHODS = [
   {
@@ -723,7 +723,7 @@ export default function CheckoutPage() {
             <span className="block text-xs text-muted-foreground">Total payable</span>
             <div className="flex items-baseline gap-1.5">
               <span className="font-heading text-xl font-bold tabular-nums">
-                {finalTotal != null ? formatINR(finalTotal) : "…"}
+                {finalTotal != null ? formatINR(roundFinalAmount(finalTotal)) : "…"}
               </span>
               {finalSavings > 0 && (
                 <span className="text-xs font-medium text-green-600 dark:text-green-400">
@@ -742,7 +742,7 @@ export default function CheckoutPage() {
             {processing
               ? "Placing…"
               : method.id === "upi" || method.id === "card"
-                ? `Pay ${finalTotal != null ? formatINR(finalTotal) : ""}`
+                ? `Pay ${finalTotal != null ? formatINR(roundFinalAmount(finalTotal)) : ""}`
                 : "Place order"}
           </Button>
         </div>
