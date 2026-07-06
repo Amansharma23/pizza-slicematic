@@ -66,6 +66,7 @@ class StaffCreate(BaseModel):
     phone: str | None = None
     role_name: str
     employee_code: str | None = None
+    pin: str | None = None
     reason: str | None = None
 
 
@@ -74,6 +75,7 @@ class StaffUpdate(BaseModel):
     phone: str | None = None
     role_name: str
     is_active: bool = True
+    pin: str | None = None
     reason: str | None = None
 
 
@@ -505,6 +507,7 @@ def create_staff(
             phone=req.phone,
             role_name=req.role_name,
             employee_code=req.employee_code,
+            pin=req.pin,
             performed_by=user["id"],
             reason=req.reason,
         )
@@ -526,6 +529,7 @@ def update_staff(
             phone=req.phone,
             role_name=req.role_name,
             is_active=req.is_active,
+            pin=req.pin,
             performed_by=user["id"],
             reason=req.reason,
         )

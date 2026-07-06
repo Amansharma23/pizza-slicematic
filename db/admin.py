@@ -28,22 +28,35 @@ ORDER_STATUSES = {
     "Cancelled",
     "RefundRequested",
     "Refunded",
+    "received",
+    "preparing",
+    "ready_for_pickup",
+    "out_for_delivery",
+    "delivered",
+    "confirmed",
+    "cancelled",
+    "completed",
 }
 
 STATUS_TRANSITIONS = {
-    "received": {"Confirmed", "Cancelled"},
-    "Created": {"PaymentPending", "Confirmed", "Cancelled"},
-    "PaymentPending": {"Confirmed", "Cancelled"},
-    "Confirmed": {"Preparing", "Cancelled"},
-    "Preparing": {"Ready", "Cancelled"},
-    "Ready": {"Delivered", "Cancelled"},
-    "Delivered": {"Completed", "RefundRequested"},
+    "received": {"Confirmed", "confirmed", "Preparing", "preparing", "Cancelled", "cancelled"},
+    "Created": {"PaymentPending", "Confirmed", "confirmed", "Cancelled", "cancelled"},
+    "PaymentPending": {"Confirmed", "confirmed", "Cancelled", "cancelled"},
+    "Confirmed": {"Preparing", "preparing", "Cancelled", "cancelled"},
+    "confirmed": {"Preparing", "preparing", "Cancelled", "cancelled"},
+    "Preparing": {"Ready", "ready_for_pickup", "Cancelled", "cancelled"},
+    "preparing": {"Ready", "ready_for_pickup", "Cancelled", "cancelled"},
+    "Ready": {"Delivered", "delivered", "Cancelled", "cancelled"},
+    "ready_for_pickup": {"Delivered", "delivered", "out_for_delivery", "Cancelled", "cancelled"},
+    "Delivered": {"Completed", "completed", "RefundRequested"},
+    "delivered": {"Completed", "completed", "RefundRequested"},
     "Completed": {"RefundRequested"},
-    "RefundRequested": {"Refunded", "Completed"},
-    "confirmed": {"Preparing", "Cancelled"},
+    "completed": {"RefundRequested"},
+    "RefundRequested": {"Refunded", "Completed", "completed"},
     "cancelled": set(),
     "Cancelled": set(),
     "Refunded": set(),
+    "refunded": set(),
 }
 
 STAFF_ORDER_STATUSES = {
@@ -54,6 +67,8 @@ STAFF_ORDER_STATUSES = {
     "Ready",
     "received",
     "confirmed",
+    "preparing",
+    "ready_for_pickup",
 }
 
 STAFF_NEXT_STATUS = {
@@ -64,6 +79,8 @@ STAFF_NEXT_STATUS = {
     "Ready": "Delivered",
     "received": "Confirmed",
     "confirmed": "Preparing",
+    "preparing": "ready_for_pickup",
+    "ready_for_pickup": "delivered",
 }
 
 
@@ -543,6 +560,7 @@ def create_staff_order(
     total: float,
     payment_mode: str,
     performed_by: str,
+    type: str = "dine_in",
 ) -> dict:
     _ensure_postgres()
     if payment_mode not in {"Cash", "Card", "UPI"}:
@@ -553,15 +571,15 @@ def create_staff_order(
                 """
                 insert into public.orders (
                     user_id, source, customer_name, customer_phone, items,
-                    subtotal, discount, gst, total, payment_mode, status
+                    subtotal, discount, gst, total, payment_mode, status, type
                 )
                 values (
                     %s, 'staff_pos', %s, %s, %s::jsonb,
-                    %s, %s, %s, %s, %s, 'Confirmed'
+                    %s, %s, %s, %s, %s, 'confirmed', %s
                 )
                 returning id, order_no, customer_name, customer_phone, items,
                           subtotal, discount, gst, total, payment_mode, status,
-                          source, created_at
+                          source, created_at, type
                 """,
                 (
                     None,
@@ -573,6 +591,7 @@ def create_staff_order(
                     gst,
                     total,
                     payment_mode,
+                    type,
                 ),
             )
             order = _one(cur)
@@ -638,7 +657,7 @@ def update_order_status(
                     f"Cannot move order from {old['status']} to {new_status}."
                 )
             deduction = None
-            if new_status == "Preparing" and old["status"] != "Preparing":
+            if new_status in ("Preparing", "preparing") and old["status"] not in ("Preparing", "preparing"):
                 deduction = _deduct_order_inventory(
                     cur,
                     order_id=order_id,
@@ -2038,6 +2057,20 @@ def list_roles() -> list[dict]:
             return _many(cur)
 
 
+def _map_role_name_to_app_role(role_name: str) -> str:
+    r = role_name.lower().strip()
+    if "admin" in r:
+        return "admin"
+    elif "kitchen" in r or "backstage" in r:
+        return "kitchen_staff"
+    elif "delivery" in r or "rider" in r:
+        return "delivery"
+    elif "customer" in r:
+        return "user"
+    else:
+        return "staff"
+
+
 def create_staff(
     *,
     full_name: str,
@@ -2045,6 +2078,7 @@ def create_staff(
     phone: str | None,
     role_name: str,
     employee_code: str | None,
+    pin: str | None = None,
     performed_by: str,
     reason: str | None = None,
 ) -> dict:
@@ -2053,6 +2087,12 @@ def create_staff(
         raise ValueError("Staff name is required.")
     if "@" not in email:
         raise ValueError("Valid staff email is required.")
+    
+    app_role = _map_role_name_to_app_role(role_name)
+    from api import security
+    p = pin or employee_code or "123456"
+    secret_hash = security.hash_secret(p)
+
     with postgres.connect() as conn:
         with conn.cursor() as cur:
             cur.execute("select id from public.roles where name = %s", (role_name,))
@@ -2061,16 +2101,30 @@ def create_staff(
                 raise ValueError("Unknown staff role.")
             cur.execute(
                 """
-                insert into public.app_users (email, full_name, phone, status)
-                values (%s, %s, %s, 'active')
+                insert into public.app_users (
+                    email, name, full_name, phone, role, emp_id, secret_hash, is_active, status
+                )
+                values (%s, %s, %s, %s, %s, %s, %s, true, 'active')
                 on conflict (email) do update set
+                    name = excluded.name,
                     full_name = excluded.full_name,
                     phone = excluded.phone,
+                    role = excluded.role,
+                    emp_id = excluded.emp_id,
+                    secret_hash = excluded.secret_hash,
                     status = 'active',
                     updated_at = now()
-                returning id, email, full_name, phone, status
+                returning id, role, name, phone, email, emp_id, is_active, status
                 """,
-                (email.strip().lower(), full_name.strip(), phone),
+                (
+                    email.strip().lower(),
+                    full_name.strip(),
+                    full_name.strip(),
+                    phone,
+                    app_role,
+                    (employee_code or "").strip() or None,
+                    secret_hash,
+                ),
             )
             user = _one(cur)
             cur.execute(
@@ -2117,10 +2171,12 @@ def update_staff(
     phone: str | None,
     role_name: str,
     is_active: bool,
+    pin: str | None = None,
     performed_by: str,
     reason: str | None = None,
 ) -> dict:
     _ensure_postgres()
+    app_role = _map_role_name_to_app_role(role_name)
     with postgres.connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -2141,15 +2197,29 @@ def update_staff(
             if not role:
                 raise ValueError("Unknown staff role.")
             status = "active" if is_active else "inactive"
-            cur.execute(
-                """
-                update public.app_users
-                set full_name = %s, phone = %s, status = %s, updated_at = now()
-                where id = %s
-                returning id, email, full_name, phone, status
-                """,
-                (full_name.strip(), phone, status, old["user_id"]),
-            )
+            
+            if pin:
+                from api import security
+                secret_hash = security.hash_secret(pin)
+                cur.execute(
+                    """
+                    update public.app_users
+                    set role = %s, name = %s, full_name = %s, phone = %s, secret_hash = %s, status = %s, updated_at = now()
+                    where id = %s
+                    returning id, email, full_name, phone, status
+                    """,
+                    (app_role, full_name.strip(), full_name.strip(), phone, secret_hash, status, old["user_id"]),
+                )
+            else:
+                cur.execute(
+                    """
+                    update public.app_users
+                    set role = %s, name = %s, full_name = %s, phone = %s, status = %s, updated_at = now()
+                    where id = %s
+                    returning id, email, full_name, phone, status
+                    """,
+                    (app_role, full_name.strip(), full_name.strip(), phone, status, old["user_id"]),
+                )
             user = _one(cur)
             cur.execute(
                 "delete from public.user_roles where user_id = %s", (old["user_id"],)

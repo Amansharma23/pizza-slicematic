@@ -30,6 +30,7 @@ class StaffCheckout(BaseModel):
     name: str
     phone: str
     payment_mode: str
+    type: str = "dine_in"
     lines: list[public_routes.CartLineReq]
 
 
@@ -110,6 +111,12 @@ def advance_order(
             performed_by=user["id"],
             reason=req.reason,
         )
+        try:
+            from ai.realtime import broadcast_event
+            broadcast_event("order_status_updated", order)
+        except Exception as ws_exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to broadcast order_status_updated: %s", ws_exc)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -158,6 +165,9 @@ def checkout(
         for key in totals:
             totals[key] = round(totals[key] + getattr(bill, key), 2)
 
+    if req.type not in {"dine_in", "takeaway"}:
+        errors["type"] = "Type must be either 'dine_in' or 'takeaway'."
+
     if errors:
         return {"ok": False, "errors": errors}
 
@@ -172,7 +182,14 @@ def checkout(
             total=totals["total"],
             payment_mode=mode,
             performed_by=user["id"],
+            type=req.type,
         )
+        try:
+            from ai.realtime import broadcast_event
+            broadcast_event("order_created", order)
+        except Exception as ws_exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to broadcast order_created: %s", ws_exc)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "order": order}

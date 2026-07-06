@@ -1,4 +1,4 @@
-﻿"""FastAPI app for the SliceMatic Stage 3 backend.
+"""FastAPI app for the SliceMatic Stage 3 backend.
 
 Mounts the existing core-backed REST routes (api/routes.py, /api/*) alongside the
 new conversational endpoints, with CORS for the Next.js frontend. Run:
@@ -74,6 +74,9 @@ def _warmup() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+    import ai.realtime as realtime
+    realtime.main_loop = asyncio.get_running_loop()
     # Daemon thread: the server binds immediately; the warmup races the first
     # customer instead of delaying boot (matters on hosts with health checks).
     threading.Thread(target=_warmup, daemon=True).start()
@@ -96,6 +99,8 @@ app.add_middleware(
 )
 
 app.include_router(api_router)  # /api/* (menu, summary, order, analytics, ...)
+from ai.realtime import router as realtime_router
+app.include_router(realtime_router, prefix="/api")
 app.include_router(admin_router)  # /admin/* protected owner/ops APIs
 app.include_router(staff_router)  # /staff/* protected kitchen/backstage APIs
 app.include_router(chat_router)  # /chat

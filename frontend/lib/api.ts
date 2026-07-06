@@ -7,8 +7,10 @@
  * client never computes prices.
  */
 
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ?? "http://localhost:7861";
+
+export const WS_BASE = API_BASE.replace(/^http/, "ws");
 
 export class ApiError extends Error {
   constructor(
@@ -317,6 +319,13 @@ export function checkoutCart(
   return postJSON<CheckoutResponse>("/api/cart/checkout", payload);
 }
 
+export function acceptOrder(
+  orderNo: string,
+  token: string
+): Promise<{ ok: boolean; order?: UserOrder; errors?: Record<string, string> }> {
+  return postJSON(`/api/orders/${orderNo}/accept`, {}, authHeader(token));
+}
+
 /* ------------------------- Orders (DB) ---------------------- */
 // API orders live in Supabase (source of truth). Listed by user_id.
 
@@ -330,6 +339,7 @@ export interface OrderItem {
 }
 
 export interface UserOrder {
+  id?: string;
   order_no: string;
   items: OrderItem[] | null;
   subtotal: number;
@@ -343,7 +353,9 @@ export interface UserOrder {
   customer_phone?: string;
   delivery_address?: string | null;
   source?: string;
+  /** Canonical order channel. */
   type?: OrderChannel | null;
+  rider_id?: string | null;
   preparing_at?: string | null;
   ready_at?: string | null;
   out_for_delivery_at?: string | null;

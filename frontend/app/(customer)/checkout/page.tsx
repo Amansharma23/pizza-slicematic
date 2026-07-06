@@ -120,6 +120,7 @@ export default function CheckoutPage() {
         phone: phone.trim(),
         payment_mode: method.mode,
         address: needsAddress && address ? `${address.label}: ${address.line}` : "",
+        type: needsAddress ? "online" : "takeaway",
         lines: cart.map(toPayload),
       });
       if (!res.ok || !res.order_no) {
@@ -271,32 +272,32 @@ export default function CheckoutPage() {
                 </Button>
               </div>
             ) : (
-            <div className="space-y-2">
-              {addresses.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => setAddressId(a.id)}
-                  className={cn(
-                    "flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-left transition-colors",
-                    addressId === a.id
-                      ? "border-primary bg-primary/10"
-                      : "border-border bg-surface-2 hover:border-primary/50"
-                  )}
-                >
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium">{a.label}</span>
-                    <span className="block text-sm text-muted-foreground">
-                      {a.line}
+              <div className="space-y-2">
+                {addresses.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setAddressId(a.id)}
+                    className={cn(
+                      "flex w-full cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-left transition-colors",
+                      addressId === a.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-surface-2 hover:border-primary/50"
+                    )}
+                  >
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{a.label}</span>
+                      <span className="block text-sm text-muted-foreground">
+                        {a.line}
+                      </span>
                     </span>
-                  </span>
-                  {addressId === a.id && (
-                    <Check className="size-4 shrink-0 text-primary" />
-                  )}
-                </button>
-              ))}
-            </div>
+                    {addressId === a.id && (
+                      <Check className="size-4 shrink-0 text-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
           </section>
 

@@ -770,6 +770,12 @@ export async function updateAdminStaff(
   return adminJSON(`/admin/staff/${staffId}`, "PUT", payload);
 }
 
+export async function deleteAdminStaff(
+  staffId: string
+): Promise<{ ok: boolean; staff: AdminStaffMember }> {
+  return adminJSON(`/admin/staff/${staffId}`, "DELETE", {});
+}
+
 export async function getAdminPayments(): Promise<{
   ok: boolean;
   payments: AdminPayment[];

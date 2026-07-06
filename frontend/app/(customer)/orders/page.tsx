@@ -19,10 +19,17 @@ import { Card } from "@/components/ui/card";
 import type { UserOrder } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { orderStatus, useOrdersStore } from "@/lib/orders-store";
+import { useRealtime } from "@/lib/useRealtime";
 import { cn, formatINR } from "@/lib/utils";
 
 // Received, Preparing, Ready for pickup, Out for delivery, Delivered.
-const STEP_ICONS = [Check, ChefHat, PackageCheck, Bike, PartyPopper];
+const STEP_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Received": Check,
+  "Preparing": ChefHat,
+  "Ready for pickup": PackageCheck,
+  "Out for delivery": Bike,
+  "Delivered": PartyPopper,
+};
 
 export default function OrdersPage() {
   return (
@@ -45,12 +52,8 @@ function OrdersContent() {
 
   useEffect(() => refresh(), [refresh]);
 
-  // Poll so real status changes (kitchen/delivery marking an order along)
-  // show up while the tab is open, without a manual refresh.
-  useEffect(() => {
-    const t = setInterval(refresh, 15000);
-    return () => clearInterval(t);
-  }, [refresh]);
+  // Listen to live status updates and fallback to polling automatically
+  useRealtime(["order_status_updated"], refresh, refresh);
 
   if (loading && orders.length === 0) {
     return (
@@ -151,7 +154,7 @@ function OrderCard({
       {/* Status stepper */}
       <div className="flex items-center px-4 py-4">
         {steps.map((label, i) => {
-          const Icon = STEP_ICONS[i];
+          const Icon = STEP_ICON_MAP[label] ?? Check;
           const done = i <= index;
           return (
             <div key={label} className="flex flex-1 items-center last:flex-none">

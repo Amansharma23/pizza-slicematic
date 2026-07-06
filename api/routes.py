@@ -1,4 +1,4 @@
-﻿"""Shared API routes exposed over HTTP.
+"""Shared API routes exposed over HTTP.
 
 The Stage 3 FastAPI app mounts this router, so validation, pricing, and
 persistence stay centralized. core/ remains the single source of truth; no
@@ -84,13 +84,124 @@ def _load_menu_source() -> str:
     return mode if mode in {DEFAULT_MENU_MODE, CUSTOM_MENU_MODE} else DEFAULT_MENU_MODE
 
 
+_cached_menu = None
+_cached_version = None
+
 def _load_active_menu():
-    mode = _load_menu_source()
-    if mode == CUSTOM_MENU_MODE:
-        if not _has_complete_menu_files(CUSTOM_MENU_DIR):
-            raise MenuError("No updated menu has been saved yet.")
-        return menu_mod.load_menu(CUSTOM_MENU_DIR)
-    return menu_mod.load_menu(MENU_DIR)
+    global _cached_menu, _cached_version
+    from db import postgres as local_postgres
+    from core.models import Menu, MenuItem
+
+    current_version = 1
+    if local_postgres.is_enabled():
+        from db import postgres
+        try:
+            with postgres.connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("select value from public.app_settings where id = 'menu_version'")
+                    row = cur.fetchone()
+                    if row:
+                        current_version = int(row[0].get("value", 1))
+                    else:
+                        cur.execute(
+                            "insert into public.app_settings (id, value, updated_at) values ('menu_version', '{\"value\": 1}', now())"
+                        )
+                        current_version = 1
+        except Exception:
+            current_version = 1
+    else:
+        from db import client
+        client_instance = client.get_client()
+        if client_instance is not None:
+            try:
+                resp = client.execute_query(
+                    client_instance.table("app_settings").select("value").eq("id", "menu_version").limit(1)
+                )
+                rows = getattr(resp, "data", None) or []
+                if rows:
+                    current_version = int(rows[0].get("value", {}).get("value", 1))
+                else:
+                    client.execute_query(
+                        client_instance.table("app_settings").insert({"id": "menu_version", "value": {"value": 1}})
+                    )
+                    current_version = 1
+            except Exception:
+                current_version = 1
+
+    if _cached_menu is not None and _cached_version == current_version:
+        return _cached_menu
+
+    bases = []
+    pizzas = []
+    toppings = []
+    
+    if local_postgres.is_enabled():
+        from db import postgres
+        try:
+            with postgres.connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        select i.item_code, i.name, i.price, c.code
+                        from public.menu_items i
+                        join public.menu_categories c on i.category_id = c.id
+                        where i.is_available = true and i.is_deleted = false
+                        """
+                    )
+                    rows = cur.fetchall()
+                    for item_code, name, price, cat_code in rows:
+                        item = MenuItem(id=item_code, name=name, price=float(price))
+                        if cat_code == "base":
+                            bases.append(item)
+                        elif cat_code == "pizza":
+                            pizzas.append(item)
+                        elif cat_code == "topping":
+                            toppings.append(item)
+        except Exception:
+            pass
+    else:
+        from db import client
+        client_instance = client.get_client()
+        if client_instance is not None:
+            try:
+                resp_cats = client.execute_query(client_instance.table("menu_categories").select("*"))
+                cats = getattr(resp_cats, "data", None) or []
+                cat_map = {c["id"]: c["code"] for c in cats}
+                
+                resp_items = client.execute_query(
+                    client_instance.table("menu_items")
+                    .select("*")
+                    .eq("is_available", True)
+                    .eq("is_deleted", False)
+                )
+                items = getattr(resp_items, "data", None) or []
+                for item in items:
+                    cat_code = cat_map.get(item["category_id"])
+                    m_item = MenuItem(id=item["item_code"], name=item["name"], price=float(item["price"]))
+                    if cat_code == "base":
+                        bases.append(m_item)
+                    elif cat_code == "pizza":
+                        pizzas.append(m_item)
+                    elif cat_code == "topping":
+                        toppings.append(m_item)
+            except Exception:
+                pass
+
+    if not bases or not pizzas or not toppings:
+        mode = _load_menu_source()
+        fallback_menu = None
+        if mode == CUSTOM_MENU_MODE:
+            if _has_complete_menu_files(CUSTOM_MENU_DIR):
+                fallback_menu = menu_mod.load_menu(CUSTOM_MENU_DIR)
+        if fallback_menu is None:
+            fallback_menu = menu_mod.load_menu(MENU_DIR)
+        _cached_menu = fallback_menu
+        _cached_version = current_version
+        return _cached_menu
+
+    _cached_menu = Menu(bases=bases, pizzas=pizzas, toppings=toppings)
+    _cached_version = current_version
+    return _cached_menu
 
 
 def _bill_dict(bill):
@@ -431,6 +542,29 @@ def price_cart(req: CartReq):
     return {"ok": True, "lines": out_lines, "cart": totals}
 
 
+def _fetch_order_by_no(order_no: str) -> dict | None:
+    from db import postgres as local_postgres
+    if local_postgres.is_enabled():
+        with local_postgres.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("select * from public.orders where order_no = %s", (order_no,))
+                cols = [desc.name for desc in cur.description]
+                row = cur.fetchone()
+                if row:
+                    return local_postgres._serialize(dict(zip(cols, row)))
+    else:
+        from db import client
+        client_instance = client.get_client()
+        if client_instance is not None:
+            resp = client.execute_query(
+                client_instance.table("orders").select("*").eq("order_no", order_no).limit(1)
+            )
+            rows = getattr(resp, "data", None) or []
+            if rows:
+                return rows[0]
+    return None
+
+
 @router.post("/cart/checkout")
 def checkout_cart(req: CheckoutReq):
     """Place a multi-line, multi-topping cart through the API.
@@ -500,7 +634,15 @@ def checkout_cart(req: CheckoutReq):
             delivery_address=req.address.strip() or None,
             type=req.type,
         )
-    except Exception as exc:  # DB is source of truth â€” surface the failure
+        try:
+            full_order = _fetch_order_by_no(order_no)
+            if full_order:
+                from ai.realtime import broadcast_event
+                broadcast_event("order_created", full_order)
+        except Exception as ws_exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to broadcast order_created: %s", ws_exc)
+    except Exception as exc:  # DB is source of truth — surface the failure
         return {"ok": False, "errors": {"db": f"Could not save the order: {exc}"}}
 
     return {
@@ -525,7 +667,7 @@ def list_recent_orders(type: str = "", status: str = ""):
         return {
             "ok": True,
             "orders": db_orders.list_recent_orders(
-                type=type or None, status=status or None
+                order_type=type or None, status=status or None
             ),
         }
     except Exception as exc:
@@ -545,11 +687,11 @@ def list_orders(user_id: str = "", phone: str = "", type: str = "", status: str 
     try:
         if phone:
             orders = db_orders.list_orders_by_phone(
-                phone, type=type or None, status=status or None
+                phone, order_type=type or None, status=status or None
             )
         else:
             orders = db_orders.list_orders_by_user(
-                user_id, type=type or None, status=status or None
+                user_id, order_type=type or None, status=status or None
             )
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
@@ -575,12 +717,48 @@ def update_order_status(
     if db_orders is None:
         return {"ok": False, "errors": {"db": "Order database is unavailable."}}
     try:
-        order = db_orders.update_order_status(order_no, req.status)
+        rider_id = claims.get("sub") or claims.get("user_id") or claims.get("id") if role == "delivery" else None
+        order = db_orders.update_order_status(order_no, req.status, performed_by=rider_id)
+        try:
+            from ai.realtime import broadcast_event
+            broadcast_event("order_status_updated", order)
+        except Exception as ws_exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to broadcast order_status_updated: %s", ws_exc)
     except ValueError as exc:
         return {"ok": False, "errors": {"status": str(exc)}}
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
     return {"ok": True, "order": order}
+
+
+@router.post("/orders/{order_no}/accept")
+def accept_order(order_no: str, claims: dict = _delivery):
+    """Assign the logged-in rider (delivery role) to the order.
+    Forces atomic check to prevent multiple assignment races."""
+    rider_id = claims.get("sub") or claims.get("user_id") or claims.get("id")
+    if not rider_id:
+        return {"ok": False, "errors": {"auth": "Rider ID not found in token."}}
+
+    if db_orders is None:
+        return {"ok": False, "errors": {"db": "Order database is unavailable."}}
+
+    try:
+        order = db_orders.accept_delivery_order(order_no, rider_id)
+        if not order:
+            return {
+                "ok": False,
+                "errors": {"order": "This order is no longer available or already accepted by another rider."},
+            }
+        try:
+            from ai.realtime import broadcast_event
+            broadcast_event("order_status_updated", order)
+        except Exception as ws_exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to broadcast order_status_updated: %s", ws_exc)
+        return {"ok": True, "order": order}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
 
 
 @router.get("/orders/delivery-stats")

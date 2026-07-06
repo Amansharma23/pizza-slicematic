@@ -1,4 +1,4 @@
-﻿"""Create and read completed orders in the configured database.
+"""Create and read completed orders in the configured database.
 
 Stage 3 writes frontend, chat, and voice orders to the database as the source of
 truth. The legacy mirror helper remains for compatibility with historical
@@ -126,6 +126,8 @@ def create_order(
             session_id=session_id,
             language=language,
             status=status,
+            delivery_address=delivery_address,
+            type=type,
         )
 
     client = get_client()
@@ -155,25 +157,33 @@ def create_order(
     return data[0].get("order_no")
 
 
-def update_order_status(order_no: str, new_status: str) -> dict:
+def update_order_status(order_no: str, new_status: str, performed_by: str | None = None) -> dict:
     """Advance one order exactly one step in ORDER_STATUS_SEQUENCE (kitchen:
     preparing/ready_for_pickup; delivery: out_for_delivery/delivered), stamping
     the matching `..._at` timestamp column. Raises ValueError on an unknown
     order_no, an unknown status, or an illegal transition (skip, repeat, or
-    backward) â€” the caller (api/routes.py) maps that to a 400. Raises
+    backward) — the caller (api/routes.py) maps that to a 400. Raises
     RuntimeError if the DB is unavailable (status is DB-only, no .txt
     fallback, same convention as create_order)."""
+    if local_postgres.is_enabled():
+        return local_postgres.update_order_status(order_no, new_status, performed_by)
+
     client = get_client()
     if client is None:
         raise RuntimeError("Order database is not configured.")
 
     resp = execute_query(
-        client.table("orders").select("status").eq("order_no", order_no).limit(1)
+        client.table("orders").select("status, rider_id").eq("order_no", order_no).limit(1)
     )
     rows = getattr(resp, "data", None) or []
     if not rows:
         raise ValueError(f"Order {order_no} not found.")
     current = rows[0]["status"]
+    db_rider_id = rows[0].get("rider_id")
+
+    if new_status in {"out_for_delivery", "delivered"}:
+        if not db_rider_id or (performed_by and str(db_rider_id) != str(performed_by)):
+            raise ValueError("Only the assigned rider can advance this delivery order.")
 
     if new_status not in ORDER_STATUS_SEQUENCE:
         raise ValueError(f"Unknown status: {new_status}")
@@ -211,7 +221,10 @@ def update_order_status(order_no: str, new_status: str) -> dict:
 def get_delivery_stats() -> dict:
     """Today's delivered count + each delivered order's pickup->delivered
     minutes (out_for_delivery_at -> delivered_at). Interim scope: global, not
-    per-rider â€” no rider assignment exists yet (matches list_recent_orders)."""
+    per-rider — no rider assignment exists yet (matches list_recent_orders)."""
+    if local_postgres.is_enabled():
+        return local_postgres.get_delivery_stats()
+
     client = get_client()
     if client is None:
         raise RuntimeError("Order database is not configured.")
@@ -249,20 +262,22 @@ def get_delivery_stats() -> dict:
 def list_orders_by_user(
     user_id: str,
     limit: int = 50,
-    type: OrderType | None = None,
+    order_type: OrderType | None = None,
     status: str | None = None,
 ) -> list[dict]:
     """Return a user's orders, newest first. Empty list if the DB is absent."""
     if local_postgres.is_enabled():
-        return local_postgres.list_orders_by_user(user_id, limit)
+        return local_postgres.list_orders_by_user(
+            user_id, limit, order_type=order_type, status=status
+        )
 
     client = get_client()
     if client is None:
         return []
 
     query = client.table("orders").select("*").eq("user_id", user_id)
-    if type:
-        query = query.eq("type", type)
+    if order_type:
+        query = query.eq("type", order_type)
     if status:
         query = query.eq("status", status)
 
@@ -271,19 +286,22 @@ def list_orders_by_user(
 
 
 def list_recent_orders(
-    limit: int = 100, type: OrderType | None = None, status: str | None = None
+    limit: int = 100, order_type: OrderType | None = None, status: str | None = None
 ) -> list[dict]:
     """ALL recent orders, newest first â€” the delivery rider's work queue.
 
     Interim: every rider sees every order (per-rider assignment is a future
     step). Raises if the DB is unavailable so the caller can surface it."""
+    if local_postgres.is_enabled():
+        return local_postgres.list_recent_orders(limit, order_type=order_type, status=status)
+
     client = get_client()
     if client is None:
         raise RuntimeError("Order database is not configured.")
 
     query = client.table("orders").select("*")
-    if type:
-        query = query.eq("type", type)
+    if order_type:
+        query = query.eq("type", order_type)
     if status:
         query = query.eq("status", status)
 
@@ -294,20 +312,44 @@ def list_recent_orders(
 def list_orders_by_phone(
     phone: str,
     limit: int = 50,
-    type: OrderType | None = None,
+    order_type: OrderType | None = None,
     status: str | None = None,
 ) -> list[dict]:
     """Return orders for a phone number, newest first (interim user filter until
     real auth lands and everything keys on user_id). Empty if the DB is absent."""
+    if local_postgres.is_enabled():
+        return local_postgres.list_orders_by_phone(phone, limit, order_type=order_type, status=status)
+
     client = get_client()
     if client is None:
         return []
 
     query = client.table("orders").select("*").eq("customer_phone", phone)
-    if type:
-        query = query.eq("type", type)
+    if order_type:
+        query = query.eq("type", order_type)
     if status:
         query = query.eq("status", status)
 
     resp = execute_query(query.order("created_at", desc=True).limit(limit))
     return getattr(resp, "data", None) or []
+
+
+def accept_delivery_order(order_no: str, rider_id: str) -> dict | None:
+    if local_postgres.is_enabled():
+        return local_postgres.accept_delivery_order(order_no, rider_id)
+
+    client = get_client()
+    if client is None:
+        raise RuntimeError("Order database is not configured.")
+
+    resp = execute_query(
+        client.table("orders")
+        .update({"rider_id": rider_id})
+        .eq("order_no", order_no)
+        .is_("rider_id", "null")
+        .eq("status", "ready_for_pickup")
+    )
+    data = getattr(resp, "data", None)
+    if not data:
+        return None
+    return data[0]
