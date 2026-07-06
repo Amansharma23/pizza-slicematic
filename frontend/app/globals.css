@@ -53,14 +53,14 @@
 
   --backdrop: #fde68a; /* Bright warm amber/dough behind app (the bright colour!) */
   
-  --background: #fdfcf8; /* Very clean, warm off-white (NO sickly green) */
+  --background: #f5f0e8; /* Warm cream — clearly different from white cards */
   --foreground: #1c1917; /* Deep brown/slate text for readability */
 
-  --card: #ffffff; /* Crisp white cards */
+  --card: #e8eccc; /* Warm yellowish olive-green — distinct from cream background */
   --card-foreground: #1c1917;
 
-  --surface: #ffffff;
-  --surface-2: #f1f0ea; /* Subtle sand for inputs/chips */
+  --surface: #f0f2de; /* Slightly lighter olive for panels */
+  --surface-2: #e4e7c0; /* Subtle olive-sand for inputs/chips */
 
   --primary: #d92d20; /* Tomato Red */
   --primary-foreground: #ffffff;

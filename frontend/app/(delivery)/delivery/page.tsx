@@ -306,9 +306,10 @@ function OrderCard({
         {items.map((it, i) => (
           <p key={i} className="text-muted-foreground">
             <span className="font-medium text-foreground">
-              {it.quantity}× {it.pizza}
+              {it.quantity}× {it.item_name}
             </span>{" "}
-            · {it.base}
+            {it.crust ? `· ${it.crust}` : ""}
+            {it.toppings && it.toppings.length > 0 ? ` · ${it.toppings.join(", ")}` : ""}
           </p>
         ))}
       </div>

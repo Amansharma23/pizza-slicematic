@@ -209,8 +209,13 @@ function OrderCard({
         {items.map((item, i) => (
           <div key={i} className="flex justify-between gap-3 text-sm">
             <span className="min-w-0 truncate text-muted-foreground">
-              {item.quantity}× {item.pizza}
-              <span className="text-xs"> · {item.base}</span>
+              {item.quantity}× {item.item_name} {item.size_code && `(${item.size_code})`}
+              <span className="text-xs">
+                {item.crust ? ` · ${item.crust}` : ""}
+                {item.crust && item.toppings.length > 0 ? " · " : ""}
+                {item.toppings.length > 0 ? item.toppings.join(", ") : ""}
+                {!item.crust && item.toppings.length === 0 && item.item_type ? ` · ${item.item_type}` : ""}
+              </span>
             </span>
             <span className="shrink-0 tabular-nums text-muted-foreground">
               {formatINR(item.line_total)}

@@ -259,9 +259,9 @@ function KitchenColumn({
                   {o.items?.map((it, i) => (
                     <div key={i} className="text-muted-foreground leading-normal">
                       <span className="font-bold text-foreground">
-                        {it.quantity}× {it.pizza}
+                        {it.quantity}× {it.item_name}
                       </span>{" "}
-                      · <span className="text-[11px]">{it.base}</span>
+                      {it.crust && <>· <span className="text-[11px]">{it.crust}</span></>}
                       {it.toppings.length > 0 && (
                         <p className="text-[10px] pl-4 text-muted-foreground/80">
                           + {it.toppings.join(", ")}

@@ -56,8 +56,13 @@ export function BillModal({ order, open, onOpenChange }: BillModalProps) {
                 {order.items?.map((item, idx) => (
                   <tr key={idx} className="group">
                     <td className="py-3 pr-2">
-                      <div className="font-medium">{item.pizza}</div>
-                      <div className="text-xs text-muted-foreground print:text-black">Base: {item.base}</div>
+                      <div className="font-medium">{item.item_name} {item.size_code && `(${item.size_code})`}</div>
+                      {item.crust && (
+                        <div className="text-xs text-muted-foreground print:text-black">Crust: {item.crust}</div>
+                      )}
+                      {!item.crust && item.item_type && (
+                        <div className="text-xs text-muted-foreground print:text-black">Type: {item.item_type}</div>
+                      )}
                       {item.toppings && item.toppings.length > 0 && (
                         <div className="text-xs text-muted-foreground print:text-black">
                           + {item.toppings.join(", ")}

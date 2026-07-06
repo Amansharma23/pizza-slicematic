@@ -204,14 +204,24 @@ export function sendChat(
 
 export interface MenuItem {
   id: string;
+  category_code: string;
   name: string;
   price: number;
+  item_type: string | null;
+  description: string | null;
+  image_url: string | null;
+  sizes: { size_code: string; price: number }[];
+}
+
+export interface MenuSize {
+  id: string;
+  code: string;
+  name: string;
 }
 
 export interface Menu {
-  bases: MenuItem[];
-  pizzas: MenuItem[];
-  toppings: MenuItem[];
+  categories: Record<string, MenuItem[]>;
+  sizes: MenuSize[];
   error?: string;
 }
 
@@ -234,8 +244,10 @@ export function getConfig(): Promise<PricingConfig> {
 // by core/ — the client only sends ids + quantities and renders the result.
 
 export interface CartLinePayload {
-  base_id: string;
-  pizza_id: string;
+  item_id: string;
+  item_type: string;
+  size_code: string | null;
+  crust_id: string | null;
   topping_ids: string[];
   quantity: number;
 }
@@ -247,8 +259,10 @@ export interface PricedComponent {
 }
 
 export interface PricedLine {
-  base: PricedComponent;
-  pizza: PricedComponent;
+  item: PricedComponent;
+  item_type: string;
+  size_code: string | null;
+  crust: PricedComponent | null;
   toppings: PricedComponent[];
   quantity: number;
   unit_price: number;
@@ -414,8 +428,10 @@ export function submitOrderFeedback(
 // API orders live in Supabase (source of truth). Listed by user_id.
 
 export interface OrderItem {
-  pizza: string;
-  base: string;
+  item_name: string;
+  item_type: string | null;
+  size_code: string | null;
+  crust: string | null;
   toppings: string[];
   quantity: number;
   unit_price: number;

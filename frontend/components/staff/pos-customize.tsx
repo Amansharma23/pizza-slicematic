@@ -11,52 +11,60 @@ import { MAX_TOPPINGS, useStaffPos } from "@/lib/staff-store";
 import { cn, formatINR } from "@/lib/utils";
 
 export interface PosCustomizationResult {
-  pizza: MenuItem;
-  base: MenuItem;
+  item: MenuItem;
+  size_code: string | null;
+  crust: MenuItem | null;
   toppings: MenuItem[];
   quantity: number;
 }
 
-/**
- * POS step 2b — build the selected pizza: base → 1–3 toppings → quantity,
- * with the line live-priced by /api/cart/price (never client-side math).
- * Same flow as the customer customization sheet, laid out as a full kiosk
- * panel instead of a bottom sheet.
- */
 export function PosCustomize({
-  pizza,
+  item,
   menu,
   onAdd,
   onBack,
 }: {
-  pizza: MenuItem;
+  item: MenuItem;
   menu: Menu;
   onAdd: (result: PosCustomizationResult) => void;
   onBack: () => void;
 }) {
-  const [baseId, setBaseId] = useState<string>("");
+  const [sizeCode, setSizeCode] = useState<string | null>(null);
+  const [crustId, setCrustId] = useState<string | null>(null);
   const [toppingIds, setToppingIds] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [line, setLine] = useState<PricedLine | null>(null);
   const [pricing, setPricing] = useState(false);
-  // Live bulk-discount rule from /api/config — never a hardcoded 10%/5.
+
   const discountRate = useStaffPos((s) => s.discountRate);
   const discountThreshold = useStaffPos((s) => s.discountThreshold);
-  // Cart-level rule: pizzas already on the ticket count toward the threshold.
   const ticketQty = useStaffPos((s) =>
     s.ticket.reduce((n, l) => n + l.quantity, 0)
   );
   const ratePct = Math.round(discountRate * 100);
 
-  // Reset the builder whenever a different pizza is opened.
-  useEffect(() => {
-    setBaseId("");
-    setToppingIds([]);
-    setQuantity(1);
-    setLine(null);
-  }, [pizza.id]);
+  const hasSizes = item?.sizes && item.sizes.length > 0;
+  const isPizza = item?.category_code?.includes("pizza");
 
-  const ready = Boolean(baseId && toppingIds.length >= 1);
+  // Reset the builder whenever a different item is opened.
+  useEffect(() => {
+    if (item) {
+      setSizeCode(hasSizes ? item.sizes[0].size_code : null);
+      
+      const crusts = menu.categories["crust"];
+      setCrustId(isPizza && crusts && crusts.length > 0 ? crusts[0].id : null);
+      
+      setToppingIds([]);
+      setQuantity(1);
+      setLine(null);
+    }
+  }, [item, hasSizes, isPizza, menu.categories]);
+
+  const ready = Boolean(
+    item &&
+    (!hasSizes || sizeCode) &&
+    (!isPizza || crustId)
+  );
 
   // Live line price — server-computed.
   useEffect(() => {
@@ -67,7 +75,14 @@ export function PosCustomize({
     let cancelled = false;
     setPricing(true);
     priceCart([
-      { base_id: baseId, pizza_id: pizza.id, topping_ids: toppingIds, quantity },
+      {
+        item_id: item.id,
+        item_type: item.item_type || "generic",
+        size_code: sizeCode,
+        crust_id: crustId,
+        topping_ids: toppingIds,
+        quantity,
+      },
     ])
       .then((res) => {
         if (!cancelled) setLine(res.ok && res.lines ? res.lines[0] : null);
@@ -77,11 +92,18 @@ export function PosCustomize({
     return () => {
       cancelled = true;
     };
-  }, [pizza.id, baseId, toppingIds, quantity, ready]);
+  }, [item, sizeCode, crustId, toppingIds, quantity, ready]);
+
+  const allToppings = useMemo(() => {
+    return [
+      ...(menu.categories["veg_topping"] || []),
+      ...(menu.categories["non_veg_topping"] || []),
+    ];
+  }, [menu.categories]);
 
   const selectedToppings = useMemo(
-    () => menu.toppings.filter((t) => toppingIds.includes(t.id)),
-    [menu.toppings, toppingIds]
+    () => allToppings.filter((t) => toppingIds.includes(t.id)),
+    [allToppings, toppingIds]
   );
 
   const toggleTopping = (id: string) => {
@@ -95,10 +117,24 @@ export function PosCustomize({
   };
 
   const handleAdd = () => {
-    const base = menu.bases.find((b) => b.id === baseId);
-    if (!base) return;
-    onAdd({ pizza, base, toppings: selectedToppings, quantity });
+    let crust = null;
+    if (crustId) {
+      const allCrusts = menu.categories["crust"] || [];
+      crust = allCrusts.find((c) => c.id === crustId) || null;
+    }
+
+    onAdd({
+      item,
+      size_code: sizeCode,
+      crust,
+      toppings: selectedToppings,
+      quantity,
+    });
   };
+
+  const minPrice = item.sizes && item.sizes.length > 0 
+    ? Math.min(...item.sizes.map(s => s.price))
+    : item.price;
 
   return (
     <div className="flex h-full flex-col">
@@ -114,87 +150,131 @@ export function PosCustomize({
         </button>
         <div className="min-w-0">
           <h2 className="truncate font-heading text-xl font-bold">
-            {pizza.name}
+            {item.name}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {formatINR(pizza.price)} · build it for the customer
+            {formatINR(minPrice)} {hasSizes ? 'starts at' : ''} · build it for the customer
           </p>
         </div>
       </div>
 
       <div className="slick-scroll flex-1 space-y-8 overflow-y-auto px-6 py-6">
-        {/* Step 1: base */}
-        <section>
-          <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
-            <StepDot n={1} done={!!baseId} />
-            Choose the base
-          </h3>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            {menu.bases.map((base) => (
-              <button
-                key={base.id}
-                type="button"
-                onClick={() => setBaseId(base.id)}
-                className={cn(
-                  "flex cursor-pointer flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-colors",
-                  baseId === base.id
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-surface-2 hover:border-primary/50"
-                )}
-              >
-                <span className="text-base font-medium text-foreground">
-                  {base.name}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {formatINR(base.price)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+        
+        {/* Step 1: Size */}
+        {hasSizes && (
+          <section>
+            <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
+              <StepDot n={1} done={!!sizeCode} />
+              Choose Size
+            </h3>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+              {item.sizes.map((s) => {
+                const sizeName = menu.sizes.find(sz => sz.code === s.size_code)?.name || s.size_code;
+                return (
+                  <button
+                    key={s.size_code}
+                    type="button"
+                    onClick={() => setSizeCode(s.size_code)}
+                    className={cn(
+                      "flex cursor-pointer flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-colors",
+                      sizeCode === s.size_code
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-surface-2 hover:border-primary/50"
+                    )}
+                  >
+                    <span className="text-base font-medium text-foreground">
+                      {sizeName}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {formatINR(s.price)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-        {/* Step 2: toppings */}
-        <section>
-          <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
-            <StepDot n={2} done={toppingIds.length > 0} />
-            Add toppings
-            <Badge variant={toppingIds.length ? "primary" : "default"}>
-              {toppingIds.length}/{MAX_TOPPINGS}
-            </Badge>
-          </h3>
-          <div className="flex flex-wrap gap-2.5">
-            {menu.toppings.map((t) => {
-              const active = toppingIds.includes(t.id);
-              const disabled = !active && toppingIds.length >= MAX_TOPPINGS;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => toggleTopping(t.id)}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-2.5 text-base transition-colors",
-                    active
-                      ? "border-primary bg-primary/15 text-primary"
-                      : "border-border bg-surface-2 text-foreground hover:border-primary/50",
-                    disabled && "cursor-not-allowed opacity-40 hover:border-border"
-                  )}
-                >
-                  {active && <Check className="size-4" />}
-                  {t.name}
-                  <span className="text-sm text-muted-foreground">
-                    +{formatINR(t.price)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        {/* Step 2: Crust (only for pizzas) */}
+        {isPizza && (
+          <section>
+            <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
+              <StepDot n={hasSizes ? 2 : 1} done={!!crustId} />
+              Choose Crust
+            </h3>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+              {(menu.categories["crust"] || []).map((c) => {
+                const priceInfo = c.sizes?.find(s => s.size_code === sizeCode)?.price || c.price || 0;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCrustId(c.id)}
+                    className={cn(
+                      "flex cursor-pointer flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-colors",
+                      crustId === c.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-surface-2 hover:border-primary/50"
+                    )}
+                  >
+                    <span className="text-base font-medium text-foreground">
+                      {c.name}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {priceInfo > 0 ? `+${formatINR(priceInfo)}` : "Free"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-        {/* Step 3: quantity */}
+        {/* Step 3: toppings */}
+        {isPizza && (
+          <section>
+            <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
+              <StepDot n={hasSizes ? 3 : 2} done={toppingIds.length > 0} />
+              Add toppings
+              <Badge variant={toppingIds.length ? "primary" : "default"}>
+                {toppingIds.length}/{MAX_TOPPINGS}
+              </Badge>
+            </h3>
+            <div className="flex flex-wrap gap-2.5">
+              {allToppings.map((t) => {
+                const active = toppingIds.includes(t.id);
+                const disabled = !active && toppingIds.length >= MAX_TOPPINGS;
+                const priceInfo = t.sizes?.find(s => s.size_code === sizeCode)?.price || t.price || 0;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggleTopping(t.id)}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-2.5 text-base transition-colors",
+                      active
+                        ? "border-primary bg-primary/15 text-primary"
+                        : "border-border bg-surface-2 text-foreground hover:border-primary/50",
+                      disabled && "cursor-not-allowed opacity-40 hover:border-border"
+                    )}
+                  >
+                    {active && <Check className="size-4" />}
+                    {t.name}
+                    <span className="text-sm text-muted-foreground">
+                      +{formatINR(priceInfo)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Step 4: quantity */}
         <section>
           <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
-            <StepDot n={3} done />
+            <StepDot n={isPizza ? (hasSizes ? 4 : 3) : (hasSizes ? 2 : 1)} done />
             Quantity
           </h3>
           <div className="flex items-center justify-between">
@@ -222,23 +302,23 @@ export function PosCustomize({
             </div>
             {ticketQty + quantity >= discountThreshold ? (
               <Badge variant="success">
-                {ratePct}% off — order has {discountThreshold}+ pizzas
+                {ratePct}% off — order has {discountThreshold}+ items
               </Badge>
             ) : (
               <span className="text-sm text-muted-foreground">
-                Order {discountThreshold}+ pizzas in total for {ratePct}% off
+                Order {discountThreshold}+ items in total for {ratePct}% off
               </span>
             )}
           </div>
         </section>
       </div>
 
-      {/* Footer: live total + add — same structure as the customer sheet. */}
+      {/* Footer */}
       <div className="shrink-0 border-t border-border bg-surface px-6 py-4">
         <div className="mb-3 flex items-end justify-between">
           <div>
             <span className="block text-sm text-muted-foreground">
-              {ready ? "Line total (incl. GST)" : "Pick a base & topping"}
+              {ready ? "Line total (incl. GST)" : "Complete the selection"}
             </span>
             <span className="font-heading text-3xl font-bold tabular-nums">
               {line ? formatINR(line.total) : "—"}

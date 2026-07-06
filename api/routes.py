@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File
 from pydantic import BaseModel
 
 from api import security
@@ -88,48 +88,8 @@ _cached_menu = None
 _cached_version = None
 
 def _load_active_menu():
-    global _cached_menu, _cached_version
-    from db import postgres as local_postgres
-    from core.models import Menu, MenuItem
-
-    current_version = 1
-    if local_postgres.is_enabled():
-        from db import postgres
-        try:
-            with postgres.connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("select value from public.app_settings where id = 'menu_version'")
-                    row = cur.fetchone()
-                    if row:
-                        current_version = int(row[0].get("value", 1))
-                    else:
-                        cur.execute(
-                            "insert into public.app_settings (id, value, updated_at) values ('menu_version', '{\"value\": 1}', now())"
-                        )
-                        current_version = 1
-        except Exception:
-            current_version = 1
-    else:
-        from db import client
-        client_instance = client.get_client()
-        if client_instance is not None:
-            try:
-                resp = client.execute_query(
-                    client_instance.table("app_settings").select("value").eq("id", "menu_version").limit(1)
-                )
-                rows = getattr(resp, "data", None) or []
-                if rows:
-                    current_version = int(rows[0].get("value", {}).get("value", 1))
-                else:
-                    client.execute_query(
-                        client_instance.table("app_settings").insert({"id": "menu_version", "value": {"value": 1}})
-                    )
-                    current_version = 1
-            except Exception:
-                current_version = 1
-
-    if _cached_menu is not None and _cached_version == current_version:
-        return _cached_menu
+    from api.menu_helper import load_active_menu
+    return load_active_menu()
 
     bases = []
     pizzas = []
@@ -204,128 +164,6 @@ def _load_active_menu():
     return _cached_menu
 
 
-def _bill_dict(bill):
-    return {
-        "base": {"name": bill.base.name, "price": bill.base.price},
-        "pizza": {"name": bill.pizza.name, "price": bill.pizza.price},
-        "topping": {"name": bill.topping.name, "price": bill.topping.price},
-        "quantity": bill.quantity,
-        "unit_price": bill.unit_price,
-        "subtotal": bill.subtotal,
-        "discount": bill.discount,
-        "taxable": bill.taxable,
-        "gst": bill.gst,
-        "total": bill.total,
-    }
-
-
-def _resolve(req):
-    """Validate quantity + resolve menu items. Returns (bill, error_dict)."""
-    try:
-        m = _load_active_menu()
-    except MenuError as exc:
-        return None, {"menu": str(exc)}
-    ok_q, qty = v.validate_quantity(req.quantity)
-    if not ok_q:
-        return None, {"quantity": qty}
-    base = _find(m.bases, req.base_id)
-    pizza = _find(m.pizzas, req.pizza_id)
-    topping = _find(m.toppings, req.topping_id)
-    missing = [
-        n
-        for n, val in (("base", base), ("pizza", pizza), ("topping", topping))
-        if val is None
-    ]
-    if missing:
-        return None, {"selection": f"Please choose a {', '.join(missing)}."}
-    return pricing.compute_bill(base, pizza, topping, qty), None
-
-
-def _combined_topping(toppings: list[MenuItem]) -> MenuItem:
-    """Fuse 1..3 resolved toppings into one MenuItem for core.compute_bill.
-
-    Summing the toppings' menu prices is data aggregation of menu-provided
-    values â€” the bill formula (subtotal/discount/GST/total) still lives solely
-    in core.pricing. The combined name lands in the single `topping` log field.
-    """
-    return MenuItem(
-        id="+".join(t.id for t in toppings),
-        name=" + ".join(t.name for t in toppings),
-        price=round(sum(t.price for t in toppings), 2),
-    )
-
-
-def _resolve_cart_line(m, line: CartLineReq):
-    """Validate + resolve one multi-topping line. Returns (bill, toppings, err)."""
-    ok_q, qty = v.validate_quantity(line.quantity)
-    if not ok_q:
-        return None, None, {"quantity": qty}
-    base = _find(m.bases, line.base_id)
-    pizza = _find(m.pizzas, line.pizza_id)
-    missing = [n for n, val in (("base", base), ("pizza", pizza)) if val is None]
-    if missing:
-        return None, None, {"selection": f"Please choose a {', '.join(missing)}."}
-    ids = [t for t in (line.topping_ids or []) if t]
-    if not ids:
-        return None, None, {"toppings": "Pick at least one topping."}
-    if len(ids) > MAX_TOPPINGS:
-        return None, None, {"toppings": f"Choose up to {MAX_TOPPINGS} toppings."}
-    toppings = [_find(m.toppings, tid) for tid in ids]
-    if any(t is None for t in toppings):
-        return None, None, {"toppings": "One or more toppings are not on the menu."}
-    return (
-        pricing.compute_bill(base, pizza, _combined_topping(toppings), qty),
-        toppings,
-        None,
-    )
-
-
-def _cart_line_numbers(bill, cart_qualifies: bool) -> dict:
-    """Money fields for one cart line under the CART-level bulk-discount rule.
-
-    For API carts the discount applies when the TOTAL quantity across lines
-    meets the threshold (decided 2026-07-04), while core.compute_bill only
-    knows one line. Lines core already discounted (their own qty qualifies)
-    keep core's numbers unchanged; the remaining lines of a qualifying cart
-    get the identical formula re-applied here using core's own rate/GST
-    constants in core's exact order (discount -> taxable -> GST -> total).
-    A non-qualifying cart can't contain a qualifying line, so it always
-    passes through core's numbers untouched.
-    """
-    if not cart_qualifies or bill.discount > 0:
-        return {
-            "subtotal": bill.subtotal,
-            "discount": bill.discount,
-            "taxable": bill.taxable,
-            "gst": bill.gst,
-            "total": bill.total,
-        }
-    discount = round(pricing.get_discount_rate() * bill.subtotal, 2)
-    taxable = round(bill.subtotal - discount, 2)
-    gst = round(pricing.GST_RATE * taxable, 2)
-    return {
-        "subtotal": bill.subtotal,
-        "discount": discount,
-        "taxable": taxable,
-        "gst": gst,
-        "total": round(taxable + gst, 2),
-    }
-
-
-def _cart_line_dict(bill, toppings: list[MenuItem], nums: dict) -> dict:
-    return {
-        "base": {"id": bill.base.id, "name": bill.base.name, "price": bill.base.price},
-        "pizza": {
-            "id": bill.pizza.id,
-            "name": bill.pizza.name,
-            "price": bill.pizza.price,
-        },
-        "toppings": [{"id": t.id, "name": t.name, "price": t.price} for t in toppings],
-        "quantity": bill.quantity,
-        "unit_price": bill.unit_price,
-        **nums,
-    }
-
 
 # --------------------------------------------------------------------------- #
 # Models
@@ -352,10 +190,12 @@ MAX_TOPPINGS = 3
 
 
 class CartLineReq(BaseModel):
-    base_id: str = ""
-    pizza_id: str = ""
+    item_id: str = ""
+    item_type: str = "generic"
+    size_code: str | None = None
+    crust_id: str | None = None
     topping_ids: list[str] = []
-    quantity: str | int = ""
+    quantity: str | int = 1
 
 
 class CartReq(BaseModel):
@@ -426,8 +266,29 @@ def health():
 def get_menu():
     try:
         m = _load_active_menu()
-    except MenuError as exc:
+    except Exception as exc:
         return {"error": str(exc)}
+    
+    def serialize_item(item):
+        return {
+            "id": item.id,
+            "category_code": item.category_code,
+            "name": item.name,
+            "price": item.price,
+            "item_type": item.item_type,
+            "description": item.description,
+            "image_url": item.image_url,
+            "sizes": [{"size_code": s.size_code, "price": s.price} for s in item.sizes]
+        }
+        
+    out_cats = {}
+    for code, cat in m.categories.items():
+        out_cats[code] = [serialize_item(item) for item in cat.items]
+        
+    return {
+        "categories": out_cats,
+        "sizes": [{"id": s.id, "code": s.code, "name": s.name} for s in m.all_sizes]
+    }
     return {
         "bases": _cat(m.bases),
         "pizzas": _cat(m.pizzas),
@@ -632,43 +493,39 @@ def validate_coupon_code(req: CouponValidateReq):
 
 @router.post("/cart/price")
 def price_cart(req: CartReq):
-    """Price a multi-line, multi-topping cart. Additive â€” core is untouched.
-
-    Each line: base + pizza + 1..3 toppings Ã— quantity, priced by
-    core.compute_bill via a combined topping. Cart totals are the wrapper-level
-    sum of the per-line core results (no money computed client-side)."""
     try:
         m = _load_active_menu()
-    except MenuError as exc:
+    except Exception as exc:
         return {"ok": False, "errors": {"menu": str(exc)}}
     if not req.lines:
         return {"ok": False, "errors": {"lines": "Your order is empty."}}
 
-    # Pass 1: resolve every line so the discount can consider the WHOLE cart.
-    resolved = []
+    from api.cart_helper import resolve_cart_line, cart_line_to_dict
+    from core import pricing
+
+    resolved_items = []
+    out_lines = []
+    
     for idx, line in enumerate(req.lines):
-        bill, toppings, err = _resolve_cart_line(m, line)
+        # Convert string quantity if needed
+        if isinstance(line.quantity, str) and line.quantity.isdigit():
+            line.quantity = int(line.quantity)
+        
+        bill_item, err = resolve_cart_line(m, line)
         if err:
             return {"ok": False, "line_index": idx, "errors": err}
-        resolved.append((bill, toppings))
+        resolved_items.append(bill_item)
+        out_lines.append(cart_line_to_dict(bill_item))
 
-    # Cart-level bulk discount: total pizzas across lines vs the threshold.
-    total_qty = sum(bill.quantity for bill, _ in resolved)
-    cart_qualifies = total_qty >= pricing.get_discount_threshold()
-
-    out_lines = []
+    bill = pricing.compute_bill(resolved_items)
+    
     totals = {
-        "subtotal": 0.0,
-        "discount": 0.0,
-        "taxable": 0.0,
-        "gst": 0.0,
-        "total": 0.0,
+        "subtotal": bill.subtotal,
+        "discount": bill.discount,
+        "taxable": bill.taxable,
+        "gst": bill.gst,
+        "total": bill.total,
     }
-    for bill, toppings in resolved:
-        nums = _cart_line_numbers(bill, cart_qualifies)
-        out_lines.append(_cart_line_dict(bill, toppings, nums))
-        for k in totals:
-            totals[k] = round(totals[k] + nums[k], 2)
 
     return {"ok": True, "lines": out_lines, "cart": totals}
 
@@ -727,23 +584,39 @@ def checkout_cart(req: CheckoutReq):
         errors["lines"] = "Your order is empty."
 
     # Resolve + price every line up front â€” never write a partial order.
-    items, totals = [], {"subtotal": 0.0, "discount": 0.0, "gst": 0.0, "total": 0.0}
+    from api.cart_helper import resolve_cart_line
+    from core import pricing
+    
+    resolved_items = []
     for idx, line in enumerate(req.lines):
-        bill, toppings, err = _resolve_cart_line(m, line)
+        if isinstance(line.quantity, str) and line.quantity.isdigit():
+            line.quantity = int(line.quantity)
+        bill_item, err = resolve_cart_line(m, line)
         if err:
             return {"ok": False, "line_index": idx, "errors": err}
-        items.append(
-            {
-                "pizza": bill.pizza.name,
-                "base": bill.base.name,
-                "toppings": [t.name for t in toppings],
-                "quantity": bill.quantity,
-                "unit_price": bill.unit_price,
-                "line_total": bill.total,
-            }
-        )
-        for k in totals:
-            totals[k] = round(totals[k] + getattr(bill, k), 2)
+        resolved_items.append(bill_item)
+
+    bill = pricing.compute_bill(resolved_items)
+    
+    items = []
+    for b_item in resolved_items:
+        items.append({
+            "item_name": b_item.item.name,
+            "item_type": b_item.item.item_type,
+            "size_code": b_item.size_code,
+            "crust": b_item.crust.name if b_item.crust else None,
+            "toppings": [t.name for t in b_item.toppings],
+            "quantity": b_item.quantity,
+            "unit_price": b_item.unit_price,
+            "line_total": b_item.subtotal,
+        })
+        
+    totals = {
+        "subtotal": bill.subtotal,
+        "discount": bill.discount,
+        "gst": bill.gst,
+        "total": bill.total,
+    }
 
     if errors:
         return {"ok": False, "errors": errors}
@@ -1186,3 +1059,28 @@ def get_analytics(
         "top_combos": data["top_combos"].to_dict(orient="records"),
         "orders_df": data["orders_df"].to_dict(orient="records"),
     }
+
+import shutil
+from pathlib import Path
+
+@router.post("/admin/menu/upload")
+def upload_menu_image(file: UploadFile = File(...)):
+    """Upload a menu image to public/uploads directory."""
+    # Ensure directory exists
+    frontend_dir = Path("f:/FDE Project/Hackathon 3/slicematic/frontend")
+    upload_dir = frontend_dir / "public" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Secure filename
+    import uuid
+    ext = file.filename.split('.')[-1] if '.' in file.filename else 'png'
+    filename = f"{uuid.uuid4()}.{ext}"
+    file_path = upload_dir / filename
+    
+    try:
+        with file_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        # Return URL relative to public directory
+        return {"ok": True, "image_url": f"/uploads/{filename}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

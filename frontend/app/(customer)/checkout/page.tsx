@@ -676,10 +676,13 @@ export default function CheckoutPage() {
                 <li key={l.id} className="flex justify-between gap-3 text-sm">
                   <span className="min-w-0">
                     <span className="font-medium">
-                      {l.quantity}× {l.pizza.name}
+                      {l.quantity}× {l.item.name} {l.size_code && `(${l.size_code})`}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {l.base.name} · {l.toppings.map((t) => t.name).join(", ")}
+                      {l.crust?.name ? `${l.crust.name}` : ""}
+                      {l.crust && l.toppings.length > 0 ? " · " : ""}
+                      {l.toppings.length > 0 ? l.toppings.map((t) => t.name).join(", ") : ""}
+                      {!l.crust && l.toppings.length === 0 && l.item.category_code !== 'pizza' ? l.item.item_type || '' : ""}
                     </span>
                   </span>
                 </li>

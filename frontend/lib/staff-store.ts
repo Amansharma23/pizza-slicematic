@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { create } from "zustand";
 
@@ -14,11 +14,11 @@ import {
 } from "@/lib/api";
 
 /**
- * Staff kiosk POS store â€” the (staff) surface's own state slice.
+ * Staff kiosk POS store — the (staff) surface's own state slice.
  *
  * Deliberately independent from lib/menu-store.ts (the customer slice) per the
  * surface-isolation seam in CLAUDE.md: staff state can evolve (held orders,
- * shift info, â€¦) without touching â€” or being able to break â€” the customer app.
+ * shift info, …) without touching — or being able to break — the customer app.
  * All money is server-priced via /api/cart/price; nothing is computed here.
  */
 
@@ -27,15 +27,16 @@ export const MAX_TOPPINGS = 3;
 /** POS flow: details -> build -> pay -> done. */
 export type PosStep = "details" | "build" | "payment" | "done";
 
-/** How the walk-in is being served â€” staff-only, frontend-only (not sent to
+/** How the walk-in is being served — staff-only, frontend-only (not sent to
  *  the API; core/ and the DB schema are untouched). Dine In is the default. */
 export type OrderType = "dine_in" | "takeaway";
 
-/** One committed pizza on the ticket (base + pizza + toppings + qty). */
+/** One committed item on the ticket (generic item + size + crust + toppings + qty). */
 export interface TicketLine {
   id: string;
-  pizza: MenuItem;
-  base: MenuItem;
+  item: MenuItem;
+  size_code: string | null;
+  crust: MenuItem | null;
   toppings: MenuItem[];
   quantity: number;
 }
@@ -48,8 +49,10 @@ function newId() {
 
 export function toPayload(line: TicketLine): CartLinePayload {
   return {
-    base_id: line.base.id,
-    pizza_id: line.pizza.id,
+    item_id: line.item.id,
+    item_type: line.item.item_type || "generic",
+    size_code: line.size_code,
+    crust_id: line.crust?.id ?? null,
     topping_ids: line.toppings.map((t) => t.id),
     quantity: line.quantity,
   };
@@ -66,7 +69,7 @@ interface StaffPosState {
   customerPhone: string;
   setCustomer: (name: string, phone: string) => void;
 
-  // Order type â€” required before the build step; defaults to Dine In.
+  // Order type — required before the build step; defaults to Dine In.
   orderType: OrderType;
   setOrderType: (type: OrderType) => void;
 
@@ -76,7 +79,7 @@ interface StaffPosState {
   menuError: string | null;
   loadMenu: () => Promise<void>;
 
-  // Live bulk-discount rule (/api/config â€” the admin can change it at runtime;
+  // Live bulk-discount rule (/api/config — the admin can change it at runtime;
   // the UI reads it so badges/hints never show a stale rate). Server defaults.
   discountRate: number;
   discountThreshold: number;
@@ -124,7 +127,7 @@ export const useStaffPos = create<StaffPosState>((set, get) => ({
     const { menuStatus } = get();
     if (menuStatus === "loading" || menuStatus === "ready") return;
     set({ menuStatus: "loading", menuError: null });
-    // Best-effort config refresh â€” pricing itself is always server-computed,
+    // Best-effort config refresh — pricing itself is always server-computed,
     // this only keeps the discount badge/hint copy honest.
     getConfig()
       .then((cfg) =>

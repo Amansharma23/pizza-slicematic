@@ -23,13 +23,10 @@ export function AppHeader() {
   if (HIDE_ON.some((p) => pathname.startsWith(p))) return null;
 
   return (
-    <header className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-secondary bg-secondary px-3 text-secondary-foreground">
-      {/* left spacer keeps the brand centered */}
-      <div aria-hidden />
-
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-secondary bg-secondary px-3 text-secondary-foreground">
       <Link
         href="/"
-        className="flex items-center justify-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
           <Pizza className="size-4" />

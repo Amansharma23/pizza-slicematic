@@ -73,6 +73,7 @@ export interface AdminMenuItem {
   name: string;
   price: number;
   is_available: boolean;
+  image_url?: string;
   updated_at: string;
 }
 

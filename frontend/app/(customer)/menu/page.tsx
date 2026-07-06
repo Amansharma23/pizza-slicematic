@@ -1,6 +1,6 @@
 "use client";
 
-import { Flame, Leaf, Search, UtensilsCrossed } from "lucide-react";
+import { Search, UtensilsCrossed } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { CartBar } from "@/components/menu/cart-bar";
@@ -14,7 +14,24 @@ import type { MenuItem } from "@/lib/api";
 import { useMenuStore } from "@/lib/menu-store";
 import { cn } from "@/lib/utils";
 
-type MenuTab = "all" | "veg" | "non_veg" | "bestseller";
+type MenuTab = "all" | "pizza" | "sides" | "beverages" | "combos";
+
+const HIDDEN_CATEGORIES = new Set(["crust", "sauce", "veg_topping", "non_veg_topping", "topping"]);
+
+const CATEGORY_LABELS: Record<string, string> = {
+  pizza: "🍕 Pizzas",
+  veg_pizza: "🍕 Veg Pizzas",
+  non_veg_pizza: "🍖 Non-Veg Pizzas",
+  side: "🍟 Sides",
+  dip: "🍯 Dips",
+  beverage: "🥤 Beverages",
+  dessert: "🍰 Desserts",
+  combo: "🎉 Combos",
+};
+
+function getCategoryLabel(code: string): string {
+  return CATEGORY_LABELS[code] || (code.charAt(0).toUpperCase() + code.slice(1).replace(/_/g, " "));
+}
 
 export default function MenuPage() {
   const { menu, status, error, loadMenu, addLine } = useMenuStore();
@@ -27,40 +44,56 @@ export default function MenuPage() {
     void loadMenu();
   }, [loadMenu]);
 
-  const pizzas = useMemo(() => {
-    if (!menu) return [];
+  // Build a list of {sectionTitle, items} for grouped rendering
+  const sections = useMemo(() => {
+    if (!menu || !menu.categories) return [];
 
-    let filtered = menu.pizzas;
     const q = query.trim().toLowerCase();
-    if (q) {
-      filtered = filtered.filter((p) => p.name.toLowerCase().includes(q));
+
+    const result: { code: string; label: string; items: MenuItem[] }[] = [];
+
+    for (const [code, cat] of Object.entries(menu.categories)) {
+      if (HIDDEN_CATEGORIES.has(code)) continue;
+
+      let catItems = cat as MenuItem[];
+
+      // Filter by active tab
+      if (activeTab === "pizza" && !code.includes("pizza")) continue;
+      if (activeTab === "sides" && code !== "side" && code !== "dip") continue;
+      if (activeTab === "beverages" && code !== "beverage" && code !== "dessert") continue;
+      if (activeTab === "combos" && code !== "combo") continue;
+
+      // Filter by search
+      if (q) {
+        catItems = catItems.filter((p) => p.name.toLowerCase().includes(q));
+      }
+
+      if (catItems.length > 0) {
+        result.push({ code, label: getCategoryLabel(code), items: catItems });
+      }
     }
 
-    if (activeTab === "veg") {
-      filtered = filtered.filter((p) => {
-        const name = p.name.toLowerCase();
-        return !name.includes("chicken") && !name.includes("sausage") && !name.includes("barbecue");
-      });
-    } else if (activeTab === "non_veg") {
-      filtered = filtered.filter((p) => {
-        const name = p.name.toLowerCase();
-        return name.includes("chicken") || name.includes("sausage") || name.includes("barbecue");
-      });
-    } else if (activeTab === "bestseller") {
-      filtered = filtered.filter((p) => {
-        return (
-          p.name.includes("Margherita") ||
-          p.name.includes("Paneer") ||
-          p.name.includes("Extravaganza")
-        );
-      });
-    }
-
-    return filtered;
+    return result;
   }, [menu, query, activeTab]);
 
-  const openCustomize = (pizza: MenuItem) => {
-    setSelected(pizza);
+  const openCustomize = (item: MenuItem) => {
+    // If it's a generic item with NO sizes/crusts, add 1 qty directly
+    if (
+      !item.category_code.includes("pizza") &&
+      (!item.sizes || item.sizes.length === 0)
+    ) {
+      addLine({
+        item: item,
+        size_code: null,
+        crust: null,
+        toppings: [],
+        quantity: 1,
+      });
+      return;
+    }
+
+    // Otherwise open the sheet for size/crust/topping selection
+    setSelected(item);
     setCustomizeOpen(true);
   };
 
@@ -76,36 +109,39 @@ export default function MenuPage() {
         <div className="mx-auto flex w-full max-w-2xl items-center gap-2 rounded-2xl border border-input bg-surface-2/40 px-3 shadow-inner focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <label htmlFor="menu-search" className="sr-only">
-            Search pizzas
+            Search menu
           </label>
           <Input
             id="menu-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search our gourmet pizzas..."
+            placeholder="Search our menu..."
             className="h-11 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 text-sm font-medium"
           />
         </div>
 
         {/* Category Selector Tabs */}
-        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 overflow-x-auto pb-1 justify-center scrollbar-none">
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           <TabButton active={activeTab === "all"} onClick={() => setActiveTab("all")}>
-            🍕 All
+            All
           </TabButton>
-          <TabButton active={activeTab === "veg"} onClick={() => setActiveTab("veg")}>
-            <Leaf className="size-3.5 text-green-600 dark:text-green-400" /> Veg
+          <TabButton active={activeTab === "pizza"} onClick={() => setActiveTab("pizza")}>
+            🍕 Pizzas
           </TabButton>
-          <TabButton active={activeTab === "non_veg"} onClick={() => setActiveTab("non_veg")}>
-            <Flame className="size-3.5 text-red-500" /> Non-Veg
+          <TabButton active={activeTab === "sides"} onClick={() => setActiveTab("sides")}>
+            🍟 Sides & Dips
           </TabButton>
-          <TabButton active={activeTab === "bestseller"} onClick={() => setActiveTab("bestseller")}>
-            ✨ Bestsellers
+          <TabButton active={activeTab === "beverages"} onClick={() => setActiveTab("beverages")}>
+            🥤 Bev & Desserts
+          </TabButton>
+          <TabButton active={activeTab === "combos"} onClick={() => setActiveTab("combos")}>
+            🎉 Combos
           </TabButton>
         </div>
       </div>
 
       {/* List */}
-      <div className="slick-scroll flex-1 overflow-y-auto bg-surface-1/5">
+      <div className="slick-scroll flex-1 overflow-y-auto" style={{ background: "hsl(var(--surface-1) / 0.08)" }}>
         <div className="mx-auto w-full max-w-2xl px-4 py-6">
           {status === "loading" && (
             <ul className="grid grid-cols-2 gap-4">
@@ -135,24 +171,28 @@ export default function MenuPage() {
 
           {status === "ready" && (
             <>
-              <h1 className="mb-4 font-heading text-lg font-bold text-foreground px-1">
-                {activeTab === "all" && "Craving something special?"}
-                {activeTab === "veg" && "Fresh Garden Vegetarian"}
-                {activeTab === "non_veg" && "Fiery Protein Carnivore"}
-                {activeTab === "bestseller" && "Gourmet Best Sellers"}
-              </h1>
-              {pizzas.length === 0 ? (
+              {sections.length === 0 ? (
                 <p className="py-16 text-center text-sm text-muted-foreground">
-                  No pizzas found matching your filter.
+                  No items found matching your filter.
                 </p>
               ) : (
-                <ul className="grid grid-cols-2 gap-4 pb-4">
-                  {pizzas.map((pizza) => (
-                    <li key={pizza.id} className="flex">
-                      <MenuItemCard pizza={pizza} onSelect={openCustomize} />
-                    </li>
+                <div className="space-y-8 pb-4">
+                  {sections.map((section) => (
+                    <section key={section.code}>
+                      {/* Section header — always shown to separate categories */}
+                      <h2 className="mb-3 text-base font-bold text-foreground tracking-tight">
+                        {section.label}
+                      </h2>
+                      <ul className="grid grid-cols-2 gap-4">
+                        {section.items.map((item) => (
+                          <li key={item.id} className="flex">
+                            <MenuItemCard item={item} onSelect={openCustomize} />
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
                   ))}
-                </ul>
+                </div>
               )}
             </>
           )}
@@ -161,9 +201,9 @@ export default function MenuPage() {
 
       <CartBar />
 
-      {menu && (
+      {menu && selected && (
         <CustomizationSheet
-          pizza={selected}
+          item={selected}
           menu={menu}
           open={customizeOpen}
           onOpenChange={setCustomizeOpen}

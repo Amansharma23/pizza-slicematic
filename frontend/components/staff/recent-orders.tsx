@@ -331,7 +331,7 @@ function StaffOrderCard({ order, onRefresh }: { order: UserOrder; onRefresh?: ()
         {items.map((item, i) => (
           <div key={i} className="flex justify-between gap-2 text-xs">
             <span className="min-w-0 truncate text-muted-foreground">
-              {item.quantity}× {item.pizza}
+              {item.quantity}× {item.item_name}
             </span>
           </div>
         ))}

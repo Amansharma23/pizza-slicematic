@@ -339,6 +339,7 @@ export default function AdminMenuPage() {
               <tr>
                 <th className="px-4 py-3">Code</th>
                 <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Photo</th>
                 <th className="px-4 py-3">Price</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
@@ -369,7 +370,7 @@ export default function AdminMenuPage() {
                 ))
               ) : (
                 <AdminEmptyTableRow
-                  colSpan={5}
+                  colSpan={6}
                   title="No menu items match"
                   description="Adjust search or availability filters to see more menu items."
                 />
@@ -469,6 +470,10 @@ export default function AdminMenuPage() {
   );
 }
 
+import { uploadAdminMenuItemPhoto } from "@/lib/admin-api";
+import { Upload } from "lucide-react";
+import Image from "next/image";
+
 function MenuRow({
   item,
   saving,
@@ -490,6 +495,46 @@ function MenuRow({
           value={item.name}
           onChange={(event) => onChange({ ...item, name: event.target.value })}
         />
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          {item.image_url ? (
+            <Image
+              src={item.image_url}
+              alt={item.name}
+              width={40}
+              height={40}
+              className="rounded-md object-cover"
+            />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-surface-2 text-xs text-muted-foreground">
+              None
+            </div>
+          )}
+          <label className="flex h-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface px-2 text-xs font-medium hover:bg-surface-2">
+            <Upload className="mr-1 size-3" />
+            Upload
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={saving}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const res = await uploadAdminMenuItemPhoto(item.id, file);
+                  if (res.ok) {
+                    onChange({ ...item, image_url: res.image_url });
+                    await onSave({ ...item, image_url: res.image_url });
+                  }
+                } catch (err) {
+                  alert(err instanceof Error ? err.message : "Upload failed");
+                }
+              }}
+            />
+          </label>
+        </div>
       </td>
       <td className="px-4 py-3">
         <Input
