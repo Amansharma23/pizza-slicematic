@@ -97,26 +97,39 @@ export default function StaffPosPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="relative grid h-full min-h-0 grid-cols-[minmax(0,1fr)_minmax(340px,24%)] overflow-hidden">
       {/* Left: Menu grid — always visible while building */}
-      <div className={`min-w-0 border-r border-border transition-all duration-300 ${selectedItem ? "w-[52%]" : "flex-1"}`}>
-        <PosMenu menu={menu} onSelect={setSelectedItem} selectedId={selectedItem?.id ?? null} />
+      <div className="min-h-0 min-w-0 overflow-hidden border-r border-border">
+        <PosMenu
+          menu={menu}
+          onSelect={setSelectedItem}
+          selectedId={selectedItem?.id ?? null}
+          onCategoryChange={() => setSelectedItem(null)}
+        />
       </div>
 
       {/* Middle: Customization panel — slides in when item selected */}
       {selectedItem && (
-        <div className="w-[40%] shrink-0 border-r border-border">
-          <PosCustomize
-            item={selectedItem}
-            menu={menu}
-            onAdd={handleAdd}
-            onBack={() => setSelectedItem(null)}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <button
+            type="button"
+            aria-label="Close customization"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setSelectedItem(null)}
           />
+          <div className="relative h-[min(900px,92vh)] w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+            <PosCustomize
+              item={selectedItem}
+              menu={menu}
+              onAdd={handleAdd}
+              onBack={() => setSelectedItem(null)}
+            />
+          </div>
         </div>
       )}
 
       {/* Right: Order ticket */}
-      <div className="w-[300px] shrink-0">
+      <div className="min-h-0 min-w-0 overflow-hidden">
         <OrderTicket />
       </div>
     </div>

@@ -12,7 +12,7 @@ import {
   priceCart,
 } from "@/lib/api";
 
-export const MAX_TOPPINGS = 3;
+export const MAX_TOPPINGS = Number.POSITIVE_INFINITY;
 
 /** One committed pizza in the cart (a distinct base + pizza + toppings combo). */
 export interface CartLine {

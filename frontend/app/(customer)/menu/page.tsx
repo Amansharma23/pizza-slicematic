@@ -1,7 +1,7 @@
 "use client";
 
-import { Search, UtensilsCrossed } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Leaf, Search, UtensilsCrossed } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CartBar } from "@/components/menu/cart-bar";
 import {
@@ -20,8 +20,12 @@ const HIDDEN_CATEGORIES = new Set(["crust", "sauce", "veg_topping", "non_veg_top
 
 const CATEGORY_LABELS: Record<string, string> = {
   pizza: "🍕 Pizzas",
+  value_pizza: "🍕 Value pizza",
   veg_pizza: "🍕 Veg Pizzas",
+  classic_veg_pizza: "🌱 Classic veg pizza",
+  special_veg_pizza: "🔥 Special veg pizza",
   non_veg_pizza: "🍖 Non-Veg Pizzas",
+  premium_pizza: "⭐ Premium pizza",
   side: "🍟 Sides",
   dip: "🍯 Dips",
   beverage: "🥤 Beverages",
@@ -39,6 +43,7 @@ export default function MenuPage() {
   const [selected, setSelected] = useState<MenuItem | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<MenuTab>("all");
+  const [vegOnly, setVegOnly] = useState(false);
 
   useEffect(() => {
     void loadMenu();
@@ -63,6 +68,14 @@ export default function MenuPage() {
       if (activeTab === "beverages" && code !== "beverage" && code !== "dessert") continue;
       if (activeTab === "combos" && code !== "combo") continue;
 
+      if (vegOnly) {
+        if (code === "non_veg_pizza" || code === "non_veg_topping") continue;
+        catItems = catItems.filter((item) => {
+          const type = item.item_type?.toLowerCase() ?? "";
+          return !type.includes("non-veg") && !item.category_code.includes("non_veg");
+        });
+      }
+
       // Filter by search
       if (q) {
         catItems = catItems.filter((p) => p.name.toLowerCase().includes(q));
@@ -74,7 +87,7 @@ export default function MenuPage() {
     }
 
     return result;
-  }, [menu, query, activeTab]);
+  }, [menu, query, activeTab, vegOnly]);
 
   const openCustomize = (item: MenuItem) => {
     // If it's a generic item with NO sizes/crusts, add 1 qty directly
@@ -106,7 +119,8 @@ export default function MenuPage() {
       {/* Search & Categories */}
       <div className="shrink-0 border-b border-border bg-card/60 backdrop-blur-md px-4 py-4 space-y-4">
         {/* Search */}
-        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 rounded-2xl border border-input bg-surface-2/40 px-3 shadow-inner focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-input bg-surface-2/40 px-3 shadow-inner transition-all focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <label htmlFor="menu-search" className="sr-only">
             Search menu
@@ -116,12 +130,26 @@ export default function MenuPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search our menu..."
-            className="h-11 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 text-sm font-medium"
+            className="h-10 border-0 bg-transparent px-1 text-sm font-medium shadow-none focus-visible:ring-0"
           />
+          </div>
+          <button
+            type="button"
+            onClick={() => setVegOnly((current) => !current)}
+            className={cn(
+              "flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-2 border-green-800 px-3 text-xs font-semibold shadow-sm transition-all",
+              vegOnly
+                ? "bg-green-700 text-white"
+                : "bg-background text-foreground hover:bg-green-50"
+            )}
+          >
+            <Leaf className={cn("size-4", vegOnly ? "text-white" : "text-green-700")} />
+            Veg only
+          </button>
         </div>
 
         {/* Category Selector Tabs */}
-        <div className="mx-auto flex w-full max-w-2xl items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <DragScroll className="slick-scroll mx-auto flex w-full max-w-2xl touch-pan-x select-none items-center gap-2 overflow-x-auto overscroll-x-contain pb-2">
           <TabButton active={activeTab === "all"} onClick={() => setActiveTab("all")}>
             All
           </TabButton>
@@ -137,7 +165,7 @@ export default function MenuPage() {
           <TabButton active={activeTab === "combos"} onClick={() => setActiveTab("combos")}>
             🎉 Combos
           </TabButton>
-        </div>
+        </DragScroll>
       </div>
 
       {/* List */}
@@ -210,6 +238,60 @@ export default function MenuPage() {
           onAdd={handleAdd}
         />
       )}
+    </div>
+  );
+}
+
+function DragScroll({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const start = useRef({ x: 0, scrollLeft: 0, dragging: false, hasDragged: false });
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      onPointerDown={(event) => {
+        const el = ref.current;
+        if (!el) return;
+        start.current = {
+          x: event.clientX,
+          scrollLeft: el.scrollLeft,
+          dragging: true,
+          hasDragged: false,
+        };
+      }}
+      onPointerMove={(event) => {
+        const el = ref.current;
+        if (!el || !start.current.dragging) return;
+        const dx = event.clientX - start.current.x;
+        if (Math.abs(dx) > 5) {
+          start.current.hasDragged = true;
+        }
+        el.scrollLeft = start.current.scrollLeft - dx;
+      }}
+      onPointerUp={() => {
+        start.current.dragging = false;
+      }}
+      onPointerLeave={() => {
+        start.current.dragging = false;
+      }}
+      onPointerCancel={() => {
+        start.current.dragging = false;
+      }}
+      onClickCapture={(event) => {
+        if (start.current.hasDragged) {
+          event.stopPropagation();
+          event.preventDefault();
+        }
+      }}
+    >
+      {children}
     </div>
   );
 }

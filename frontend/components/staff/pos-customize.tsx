@@ -1,14 +1,14 @@
 "use client";
 
 import { ArrowLeft, Check, Minus, Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Menu, MenuItem, PricedLine } from "@/lib/api";
 import { priceCart } from "@/lib/api";
-import { MAX_TOPPINGS, useStaffPos } from "@/lib/staff-store";
-import { cn, formatINR } from "@/lib/utils";
+import { useStaffPos } from "@/lib/staff-store";
+import { cn, formatINR, formatMenuINR } from "@/lib/utils";
 
 export interface PosCustomizationResult {
   item: MenuItem;
@@ -31,7 +31,7 @@ export function PosCustomize({
 }) {
   const [sizeCode, setSizeCode] = useState<string | null>(null);
   const [crustId, setCrustId] = useState<string | null>(null);
-  const [toppingIds, setToppingIds] = useState<string[]>([]);
+  const [toppingCounts, setToppingCounts] = useState<Record<string, number>>({});
   const [quantity, setQuantity] = useState(1);
   const [line, setLine] = useState<PricedLine | null>(null);
   const [pricing, setPricing] = useState(false);
@@ -42,6 +42,11 @@ export function PosCustomize({
     s.ticket.reduce((n, l) => n + l.quantity, 0)
   );
   const ratePct = Math.round(discountRate * 100);
+  const showDiscountHint =
+    ratePct > 0 &&
+    Number.isFinite(discountThreshold) &&
+    discountThreshold > 1 &&
+    discountThreshold < 1000;
 
   const hasSizes = item?.sizes && item.sizes.length > 0;
   const isPizza = item?.category_code?.includes("pizza");
@@ -54,7 +59,7 @@ export function PosCustomize({
       const crusts = menu.categories["crust"];
       setCrustId(isPizza && crusts && crusts.length > 0 ? crusts[0].id : null);
       
-      setToppingIds([]);
+      setToppingCounts({});
       setQuantity(1);
       setLine(null);
     }
@@ -64,6 +69,11 @@ export function PosCustomize({
     item &&
     (!hasSizes || sizeCode) &&
     (!isPizza || crustId)
+  );
+
+  const pricedToppingIds = useMemo(
+    () => Object.entries(toppingCounts).flatMap(([id, count]) => Array(count).fill(id) as string[]),
+    [toppingCounts]
   );
 
   // Live line price — server-computed.
@@ -80,7 +90,7 @@ export function PosCustomize({
         item_type: item.item_type || "generic",
         size_code: sizeCode,
         crust_id: crustId,
-        topping_ids: toppingIds,
+        topping_ids: pricedToppingIds,
         quantity,
       },
     ])
@@ -92,7 +102,7 @@ export function PosCustomize({
     return () => {
       cancelled = true;
     };
-  }, [item, sizeCode, crustId, toppingIds, quantity, ready]);
+  }, [item, sizeCode, crustId, pricedToppingIds, quantity, ready]);
 
   const allToppings = useMemo(() => {
     return [
@@ -101,19 +111,31 @@ export function PosCustomize({
     ];
   }, [menu.categories]);
 
+  const toppingIds = useMemo(
+    () => Object.entries(toppingCounts).flatMap(([id, count]) => Array(count).fill(id) as string[]),
+    [toppingCounts]
+  );
+
   const selectedToppings = useMemo(
-    () => allToppings.filter((t) => toppingIds.includes(t.id)),
+    () =>
+      toppingIds
+        .map((id) => allToppings.find((t) => t.id === id))
+        .filter((t): t is MenuItem => Boolean(t)),
     [allToppings, toppingIds]
   );
 
-  const toggleTopping = (id: string) => {
-    setToppingIds((prev) =>
-      prev.includes(id)
-        ? prev.filter((t) => t !== id)
-        : prev.length >= MAX_TOPPINGS
-          ? prev
-          : [...prev, id]
-    );
+  const addTopping = (id: string) => {
+    setToppingCounts((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+  };
+
+  const removeTopping = (id: string) => {
+    setToppingCounts((prev) => {
+      const nextCount = (prev[id] ?? 0) - 1;
+      const next = { ...prev };
+      if (nextCount > 0) next[id] = nextCount;
+      else delete next[id];
+      return next;
+    });
   };
 
   const handleAdd = () => {
@@ -153,7 +175,7 @@ export function PosCustomize({
             {item.name}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {formatINR(minPrice)} {hasSizes ? 'starts at' : ''} · build it for the customer
+            {formatMenuINR(minPrice)} {hasSizes ? 'starts at' : ''} · build it for the customer
           </p>
         </div>
       </div>
@@ -167,7 +189,7 @@ export function PosCustomize({
               <StepDot n={1} done={!!sizeCode} />
               Choose Size
             </h3>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <DragScroll className="slick-scroll flex select-none gap-3 overflow-x-auto pb-2">
               {item.sizes.map((s) => {
                 const sizeName = menu.sizes.find(sz => sz.code === s.size_code)?.name || s.size_code;
                 return (
@@ -176,22 +198,22 @@ export function PosCustomize({
                     type="button"
                     onClick={() => setSizeCode(s.size_code)}
                     className={cn(
-                      "flex cursor-pointer flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-colors",
+                      "flex size-32 shrink-0 cursor-pointer flex-col items-start justify-between rounded-lg border p-4 text-left transition-colors",
                       sizeCode === s.size_code
                         ? "border-primary bg-primary/10"
                         : "border-border bg-surface-2 hover:border-primary/50"
                     )}
                   >
-                    <span className="text-base font-medium text-foreground">
+                    <span className="line-clamp-2 text-base font-medium leading-tight text-foreground">
                       {sizeName}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      {formatINR(s.price)}
+                      {formatMenuINR(s.price)}
                     </span>
                   </button>
                 );
               })}
-            </div>
+            </DragScroll>
           </section>
         )}
 
@@ -202,7 +224,7 @@ export function PosCustomize({
               <StepDot n={hasSizes ? 2 : 1} done={!!crustId} />
               Choose Crust
             </h3>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <DragScroll className="slick-scroll flex select-none gap-3 overflow-x-auto pb-2">
               {(menu.categories["crust"] || []).map((c) => {
                 const priceInfo = c.sizes?.find(s => s.size_code === sizeCode)?.price || c.price || 0;
                 return (
@@ -211,22 +233,22 @@ export function PosCustomize({
                     type="button"
                     onClick={() => setCrustId(c.id)}
                     className={cn(
-                      "flex cursor-pointer flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-colors",
+                      "flex size-32 shrink-0 cursor-pointer flex-col items-start justify-between rounded-lg border p-4 text-left transition-colors",
                       crustId === c.id
                         ? "border-primary bg-primary/10"
                         : "border-border bg-surface-2 hover:border-primary/50"
                     )}
                   >
-                    <span className="text-base font-medium text-foreground">
+                    <span className="line-clamp-3 text-base font-medium leading-tight text-foreground">
                       {c.name}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      {priceInfo > 0 ? `+${formatINR(priceInfo)}` : "Free"}
+                      {priceInfo > 0 ? `+${formatMenuINR(priceInfo)}` : "Free"}
                     </span>
                   </button>
                 );
               })}
-            </div>
+            </DragScroll>
           </section>
         )}
 
@@ -237,69 +259,73 @@ export function PosCustomize({
               <StepDot n={hasSizes ? 3 : 2} done={toppingIds.length > 0} />
               Add toppings
               <Badge variant={toppingIds.length ? "primary" : "default"}>
-                {toppingIds.length}/{MAX_TOPPINGS}
+                {toppingIds.length ? `${toppingIds.length} added` : "Any number"}
               </Badge>
             </h3>
-            <div className="flex flex-wrap gap-2.5">
+            <DragScroll className="slick-scroll flex select-none gap-3 overflow-x-auto pb-2">
               {allToppings.map((t) => {
-                const active = toppingIds.includes(t.id);
-                const disabled = !active && toppingIds.length >= MAX_TOPPINGS;
+                const count = toppingCounts[t.id] ?? 0;
+                const active = count > 0;
                 const priceInfo = t.sizes?.find(s => s.size_code === sizeCode)?.price || t.price || 0;
                 return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => toggleTopping(t.id)}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-2.5 text-base transition-colors",
-                      active
-                        ? "border-primary bg-primary/15 text-primary"
-                        : "border-border bg-surface-2 text-foreground hover:border-primary/50",
-                      disabled && "cursor-not-allowed opacity-40 hover:border-border"
-                    )}
-                  >
-                    {active && <Check className="size-4" />}
-                    {t.name}
-                    <span className="text-sm text-muted-foreground">
-                      +{formatINR(priceInfo)}
-                    </span>
-                  </button>
+                  <div key={t.id} className="flex w-32 shrink-0 flex-col items-center gap-2">
+                    <div
+                      onClick={() => addTopping(t.id)}
+                      className={cn(
+                        "flex h-32 w-full cursor-pointer flex-col items-start justify-between rounded-lg border p-3 text-left text-sm transition-colors",
+                        active
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border bg-surface-2 text-foreground hover:border-primary/50"
+                      )}
+                    >
+                      <span className="flex min-w-0 items-start gap-2">
+                        {active && <Check className="size-4 shrink-0" />}
+                        <span className="line-clamp-3 leading-tight">{t.name}</span>
+                      </span>
+                      <span className="mt-1 shrink-0 text-sm text-muted-foreground">
+                        +{formatMenuINR(priceInfo)}
+                      </span>
+                    </div>
+                    <div
+                      className={cn(
+                        "flex h-9 items-center gap-2 rounded-full transition-opacity",
+                        active ? "opacity-100" : "opacity-0 pointer-events-none"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Remove ${t.name}`}
+                        onClick={(e) => { e.stopPropagation(); removeTopping(t.id); }}
+                        className="grid size-7 place-items-center rounded-full bg-background border border-border text-foreground hover:text-primary [&_svg]:size-3.5"
+                      >
+                        -
+                      </button>
+                      <span className="min-w-5 text-center text-sm font-semibold tabular-nums">
+                        {count}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Add ${t.name}`}
+                        onClick={(e) => { e.stopPropagation(); addTopping(t.id); }}
+                        className="grid size-7 place-items-center rounded-full bg-primary text-primary-foreground [&_svg]:size-3.5"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
-            </div>
+            </DragScroll>
           </section>
         )}
 
-        {/* Step 4: quantity */}
-        <section>
-          <h3 className="mb-3 flex items-center gap-2 text-base font-semibold">
-            <StepDot n={isPizza ? (hasSizes ? 4 : 3) : (hasSizes ? 2 : 1)} done />
-            Quantity
-          </h3>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <QtyButton
-                label="Decrease quantity"
-                disabled={quantity <= 1}
-                onClick={() => setQuantity(quantity - 1)}
-              >
-                <Minus />
-              </QtyButton>
-              <span
-                aria-live="polite"
-                className="min-w-8 text-center text-xl font-semibold tabular-nums"
-              >
-                {quantity}
-              </span>
-              <QtyButton
-                label="Increase quantity"
-                disabled={quantity >= 10}
-                onClick={() => setQuantity(quantity + 1)}
-              >
-                <Plus />
-              </QtyButton>
-            </div>
+
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 border-t border-border bg-surface px-6 py-4">
+        {showDiscountHint && (
+          <div className="mb-3 flex justify-end">
             {ticketQty + quantity >= discountThreshold ? (
               <Badge variant="success">
                 {ratePct}% off — order has {discountThreshold}+ items
@@ -310,13 +336,31 @@ export function PosCustomize({
               </span>
             )}
           </div>
-        </section>
-      </div>
-
-      {/* Footer */}
-      <div className="shrink-0 border-t border-border bg-surface px-6 py-4">
-        <div className="mb-3 flex items-end justify-between">
-          <div>
+        )}
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <QtyButton
+              label="Decrease quantity"
+              disabled={quantity <= 1}
+              onClick={() => setQuantity(quantity - 1)}
+            >
+              <Minus />
+            </QtyButton>
+            <span
+              aria-live="polite"
+              className="min-w-8 text-center text-xl font-semibold tabular-nums"
+            >
+              {quantity}
+            </span>
+            <QtyButton
+              label="Increase quantity"
+              disabled={quantity >= 10}
+              onClick={() => setQuantity(quantity + 1)}
+            >
+              <Plus />
+            </QtyButton>
+          </div>
+          <div className="text-right">
             <span className="block text-sm text-muted-foreground">
               {ready ? "Line total (incl. GST)" : "Complete the selection"}
             </span>
@@ -324,21 +368,75 @@ export function PosCustomize({
               {line ? formatINR(line.total) : "—"}
             </span>
           </div>
-          {line && line.discount > 0 && (
-            <span className="text-sm text-success">
-              saved {formatINR(line.discount)}
-            </span>
-          )}
         </div>
+        {line && line.discount > 0 && (
+          <div className="mb-3 text-right text-sm text-success">
+            saved {formatINR(line.discount)}
+          </div>
+        )}
         <Button
           size="lg"
           className="h-14 w-full text-base"
           disabled={!ready || pricing || !line}
           onClick={handleAdd}
         >
-          {pricing ? "Pricing…" : "Add to ticket"}
+          {pricing ? "Pricing…" : "Save to ticket"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function DragScroll({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const start = useRef({ x: 0, scrollLeft: 0, dragging: false, hasDragged: false });
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      onPointerDown={(event) => {
+        const el = ref.current;
+        if (!el) return;
+        start.current = {
+          x: event.clientX,
+          scrollLeft: el.scrollLeft,
+          dragging: true,
+          hasDragged: false,
+        };
+      }}
+      onPointerMove={(event) => {
+        const el = ref.current;
+        if (!el || !start.current.dragging) return;
+        const dx = event.clientX - start.current.x;
+        if (Math.abs(dx) > 5) {
+          start.current.hasDragged = true;
+        }
+        el.scrollLeft = start.current.scrollLeft - dx;
+      }}
+      onPointerUp={() => {
+        start.current.dragging = false;
+      }}
+      onPointerLeave={() => {
+        start.current.dragging = false;
+      }}
+      onPointerCancel={() => {
+        start.current.dragging = false;
+      }}
+      onClickCapture={(event) => {
+        if (start.current.hasDragged) {
+          event.stopPropagation();
+          event.preventDefault();
+        }
+      }}
+    >
+      {children}
     </div>
   );
 }

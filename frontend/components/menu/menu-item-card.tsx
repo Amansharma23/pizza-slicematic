@@ -5,7 +5,7 @@ import Image from "next/image";
 
 import { Badge } from "@/components/ui/badge";
 import type { MenuItem } from "@/lib/api";
-import { cn, formatINR } from "@/lib/utils";
+import { cn, formatMenuINR } from "@/lib/utils";
 
 function getEmoji(categoryCode: string) {
   if (categoryCode.includes("pizza")) return "🍕";
@@ -65,7 +65,7 @@ export function MenuItemCard({
       </div>
 
       <div className="space-y-1 w-full flex-1">
-        <h3 className="line-clamp-1 font-heading text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+        <h3 className="line-clamp-2 min-h-[2.3rem] font-heading text-sm font-bold leading-snug text-foreground transition-colors group-hover:text-primary">
           {item.name}
         </h3>
         <p className="line-clamp-2 text-[11px] leading-normal text-muted-foreground min-h-[2rem]">
@@ -75,7 +75,7 @@ export function MenuItemCard({
 
       <div className="mt-auto w-full flex items-center justify-between pt-2.5 border-t border-border/40">
         <div className="flex flex-col">
-          <span className="text-sm font-bold text-foreground tabular-nums">{formatINR(minPrice)}</span>
+          <span className="text-sm font-bold text-foreground tabular-nums">{formatMenuINR(minPrice)}</span>
           <span className="text-[9px] text-muted-foreground">
             {showStartsAt ? "starts at" : "per item"}
           </span>

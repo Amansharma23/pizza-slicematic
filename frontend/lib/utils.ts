@@ -16,6 +16,18 @@ export function formatINR(amount: number): string {
   }).format(amount);
 }
 
+/** Format menu-facing prices without trailing .00 for cleaner browsing. */
+export function formatMenuINR(amount: number): string {
+  const hasPaise = !Number.isInteger(amount);
+
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: hasPaise ? 2 : 0,
+  }).format(amount);
+}
+
 /** Round .50 or more up, .49 or less down. */
 export function roundFinalAmount(amount: number): number {
   return Math.floor(amount + 0.5);

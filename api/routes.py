@@ -186,9 +186,6 @@ class OrderReq(CustomerReq, SummaryReq):
     payment_mode: str = ""
 
 
-MAX_TOPPINGS = 3
-
-
 class CartLineReq(BaseModel):
     item_id: str = ""
     item_type: str = "generic"

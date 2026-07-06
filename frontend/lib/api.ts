@@ -240,7 +240,7 @@ export function getConfig(): Promise<PricingConfig> {
 }
 
 /* ------------------------- Cart pricing --------------------- */
-// Multi-line, multi-topping (1..3) pricing. All money is computed server-side
+// Multi-line, multi-topping pricing. All money is computed server-side
 // by core/ — the client only sends ids + quantities and renders the result.
 
 export interface CartLinePayload {

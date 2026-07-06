@@ -22,7 +22,7 @@ import {
  * All money is server-priced via /api/cart/price; nothing is computed here.
  */
 
-export const MAX_TOPPINGS = 3;
+export const MAX_TOPPINGS = Number.POSITIVE_INFINITY;
 
 /** POS flow: details -> build -> pay -> done. */
 export type PosStep = "details" | "build" | "payment" | "done";

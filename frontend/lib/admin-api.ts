@@ -1038,6 +1038,29 @@ export async function updateAdminSettings(
   return adminJSON("/admin/settings", "PUT", { values, reason });
 }
 
+export async function uploadAdminMenuItemPhoto(
+  _itemId: string,
+  file: File
+): Promise<{ ok: boolean; image_url: string; error?: string }> {
+  if (!ADMIN_TOKEN) {
+    throw new Error("Admin dev token is missing in frontend/.env.local.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/admin/menu/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+    body: formData,
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(body?.detail ?? `Admin upload failed (${res.status}).`);
+  }
+  return body as { ok: boolean; image_url: string; error?: string };
+}
+
 async function adminGet<T>(path: string): Promise<T> {
   if (!ADMIN_TOKEN) {
     throw new Error("Admin dev token is missing in frontend/.env.local.");
