@@ -272,9 +272,9 @@ function OrderFeedback({ orderNo }: { orderNo: string }) {
         <span className="flex items-center gap-2 font-medium text-success">
           <PartyPopper className="size-4" /> Feedback received
         </span>
-        <span className="flex items-center gap-1 text-yellow-500">
+        <span className="flex items-center gap-1">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Star key={i} className={cn("size-3.5", i < rating ? "fill-current" : "opacity-30")} />
+            <Star key={i} className={cn("size-5", i < rating ? "fill-accent text-amber-600" : "text-amber-600/50")} />
           ))}
         </span>
       </div>
@@ -296,9 +296,9 @@ function OrderFeedback({ orderNo }: { orderNo: string }) {
                 type="button"
                 onClick={() => { setRating(i + 1); setStatus("form"); }}
                 onMouseEnter={() => setHoverRating(i + 1)}
-                className="cursor-pointer text-yellow-500 transition-colors hover:scale-110 active:scale-95"
+                className="cursor-pointer transition-colors hover:scale-110 active:scale-95"
               >
-                <Star className={cn("size-6", (hoverRating || rating) > i ? "fill-current" : "opacity-30")} />
+                <Star className={cn("size-8", (hoverRating || rating) > i ? "fill-accent text-amber-600" : "text-amber-600/50 hover:text-amber-600")} />
               </button>
             ))}
           </div>
@@ -313,9 +313,9 @@ function OrderFeedback({ orderNo }: { orderNo: string }) {
                   key={i}
                   type="button"
                   onClick={() => setRating(i + 1)}
-                  className="cursor-pointer text-yellow-500 transition-colors hover:scale-110 active:scale-95"
+                  className="cursor-pointer transition-colors hover:scale-110 active:scale-95"
                 >
-                  <Star className={cn("size-6", rating > i ? "fill-current" : "opacity-30")} />
+                  <Star className={cn("size-8", rating > i ? "fill-accent text-amber-600" : "text-amber-600/50 hover:text-amber-600")} />
                 </button>
               ))}
             </div>
