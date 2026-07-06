@@ -8,15 +8,21 @@ import {
   PackageCheck,
   PartyPopper,
   Receipt,
+  Star,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { UserOrder } from "@/lib/api";
+import { 
+  type UserOrder, 
+  getOrderFeedback, 
+  submitOrderFeedback 
+} from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 import { orderStatus, useOrdersStore } from "@/lib/orders-store";
 import { useRealtime } from "@/lib/useRealtime";
@@ -209,6 +215,140 @@ function OrderCard({
           <span className="tabular-nums">{formatINR(order.total)}</span>
         </div>
       </div>
+
+      {/* Feedback section (only for delivered orders) */}
+      {index === steps.length - 1 && (
+        <OrderFeedback orderNo={order.order_no} />
+      )}
     </Card>
+  );
+}
+
+function OrderFeedback({ orderNo }: { orderNo: string }) {
+  const [status, setStatus] = useState<"loading" | "prompt" | "form" | "submitting" | "submitted" | "error">("loading");
+  const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [text, setText] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void getOrderFeedback(orderNo).then((res) => {
+      if (!active) return;
+      if (res.ok && res.has_feedback) {
+        setRating(res.rating || 0);
+        setStatus("submitted");
+      } else {
+        setStatus("prompt");
+      }
+    });
+    return () => { active = false; };
+  }, [orderNo]);
+
+  const submit = async () => {
+    if (rating < 1) return;
+    setStatus("submitting");
+    try {
+      const res = await submitOrderFeedback(orderNo, rating, text);
+      if (res.ok) {
+        setStatus("submitted");
+      } else {
+        setStatus("error");
+        setErrorMsg(Object.values(res.errors || {})[0] || "Failed to submit feedback.");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMsg("Network error.");
+    }
+  };
+
+  if (status === "loading") {
+    return <div className="p-4 text-center text-xs text-muted-foreground bg-surface-2 border-t border-border">Checking feedback...</div>;
+  }
+
+  if (status === "submitted") {
+    return (
+      <div className="flex items-center justify-between border-t border-border bg-surface-2 px-4 py-3 text-sm">
+        <span className="flex items-center gap-2 font-medium text-success">
+          <PartyPopper className="size-4" /> Feedback received
+        </span>
+        <span className="flex items-center gap-1 text-yellow-500">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Star key={i} className={cn("size-3.5", i < rating ? "fill-current" : "opacity-30")} />
+          ))}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border bg-surface-2 p-4">
+      {status === "prompt" ? (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <MessageSquare className="size-4 text-primary" />
+            How was your order?
+          </div>
+          <div className="flex gap-1" onMouseLeave={() => setHoverRating(0)}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => { setRating(i + 1); setStatus("form"); }}
+                onMouseEnter={() => setHoverRating(i + 1)}
+                className="cursor-pointer text-yellow-500 transition-colors hover:scale-110 active:scale-95"
+              >
+                <Star className={cn("size-6", (hoverRating || rating) > i ? "fill-current" : "opacity-30")} />
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Rate your experience</span>
+            <div className="flex gap-1">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setRating(i + 1)}
+                  className="cursor-pointer text-yellow-500 transition-colors hover:scale-110 active:scale-95"
+                >
+                  <Star className={cn("size-6", rating > i ? "fill-current" : "opacity-30")} />
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea
+            placeholder="Tell us what you liked or what we can improve..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="flex min-h-[80px] w-full rounded-md border border-input bg-card px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+            disabled={status === "submitting"}
+          />
+          {status === "error" && (
+            <p className="text-xs text-destructive">{errorMsg}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setStatus("prompt"); setRating(0); setText(""); }}
+              disabled={status === "submitting"}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={submit}
+              disabled={rating < 1 || status === "submitting"}
+            >
+              {status === "submitting" ? "Submitting..." : "Submit"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

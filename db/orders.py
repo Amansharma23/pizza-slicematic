@@ -173,17 +173,19 @@ def update_order_status(order_no: str, new_status: str, performed_by: str | None
         raise RuntimeError("Order database is not configured.")
 
     resp = execute_query(
-        client.table("orders").select("status, rider_id").eq("order_no", order_no).limit(1)
+        client.table("orders").select("status, rider_id, type").eq("order_no", order_no).limit(1)
     )
     rows = getattr(resp, "data", None) or []
     if not rows:
         raise ValueError(f"Order {order_no} not found.")
     current = rows[0]["status"]
     db_rider_id = rows[0].get("rider_id")
+    order_type = rows[0].get("type")
 
     if new_status in {"out_for_delivery", "delivered"}:
-        if not db_rider_id or (performed_by and str(db_rider_id) != str(performed_by)):
-            raise ValueError("Only the assigned rider can advance this delivery order.")
+        if order_type == "online":
+            if not db_rider_id or (performed_by and str(db_rider_id) != str(performed_by)):
+                raise ValueError("Only the assigned rider can advance this delivery order.")
 
     if new_status not in ORDER_STATUS_SEQUENCE:
         raise ValueError(f"Unknown status: {new_status}")
@@ -191,7 +193,10 @@ def update_order_status(order_no: str, new_status: str, performed_by: str | None
         ORDER_STATUS_SEQUENCE.index(current) if current in ORDER_STATUS_SEQUENCE else -1
     )
     new_idx = ORDER_STATUS_SEQUENCE.index(new_status)
-    if new_idx != current_idx + 1:
+    
+    is_valid_jump = (order_type != "online" and current == "ready_for_pickup" and new_status == "delivered")
+    
+    if new_idx != current_idx + 1 and not is_valid_jump:
         next_legal = (
             ORDER_STATUS_SEQUENCE[current_idx + 1]
             if current_idx + 1 < len(ORDER_STATUS_SEQUENCE)

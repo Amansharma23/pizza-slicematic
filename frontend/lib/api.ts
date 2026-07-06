@@ -300,6 +300,7 @@ export interface CheckoutPayload {
   /** Order channel — server default "online" if omitted. */
   type?: OrderChannel;
   lines: CartLinePayload[];
+  coupon_code?: string;
 }
 
 export interface CheckoutResponse {
@@ -319,11 +320,94 @@ export function checkoutCart(
   return postJSON<CheckoutResponse>("/api/cart/checkout", payload);
 }
 
+/* --------------------------- Coupons ----------------------- */
+
+export interface CouponRule {
+  id: string;
+  name: string;
+  coupon_code: string;
+  description?: string | null;
+  discount_percent: number;
+  threshold_amount: number;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export interface CouponsResponse {
+  ok: boolean;
+  coupons: CouponRule[];
+  errors?: Record<string, string>;
+}
+
+export interface CouponValidateResponse {
+  ok: boolean;
+  coupon_code?: string;
+  coupon_name?: string;
+  description?: string | null;
+  discount_percent?: number;
+  discount_amount?: number;
+  original_total?: number;
+  new_total?: number;
+  savings?: number;
+  errors?: Record<string, string>;
+}
+
+export function listAvailableCoupons(): Promise<CouponsResponse> {
+  return getJSON<CouponsResponse>("/api/coupons/available");
+}
+
+export function validateCoupon(
+  code: string,
+  cartTotal: number
+): Promise<CouponValidateResponse> {
+  return postJSON<CouponValidateResponse>("/api/coupons/validate", {
+    code,
+    cart_total: cartTotal,
+  });
+}
+
 export function acceptOrder(
   orderNo: string,
   token: string
 ): Promise<{ ok: boolean; order?: UserOrder; errors?: Record<string, string> }> {
   return postJSON(`/api/orders/${orderNo}/accept`, {}, authHeader(token));
+}
+
+/* --------------------------- Feedback ---------------------- */
+
+export interface FeedbackStatusResponse {
+  ok: boolean;
+  has_feedback?: boolean;
+  rating?: number;
+  feedback_text?: string;
+  created_at?: string;
+  errors?: Record<string, string>;
+}
+
+export interface SubmitFeedbackResponse {
+  ok: boolean;
+  already_submitted?: boolean;
+  feedback_id?: string;
+  rating?: number;
+  message?: string;
+  errors?: Record<string, string>;
+}
+
+export function getOrderFeedback(
+  orderNo: string
+): Promise<FeedbackStatusResponse> {
+  return getJSON<FeedbackStatusResponse>(`/api/orders/${encodeURIComponent(orderNo)}/feedback`);
+}
+
+export function submitOrderFeedback(
+  orderNo: string,
+  rating: number,
+  feedbackText: string
+): Promise<SubmitFeedbackResponse> {
+  return postJSON<SubmitFeedbackResponse>(
+    `/api/orders/${encodeURIComponent(orderNo)}/feedback`,
+    { rating, feedback_text: feedbackText }
+  );
 }
 
 /* ------------------------- Orders (DB) ---------------------- */

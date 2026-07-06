@@ -3146,6 +3146,44 @@ def _build_coupon_recommendations(metrics: dict) -> list[dict]:
         metrics.get("hourly_revenue", []), key=lambda row: row.get("orders", 0)
     )[:3]
     recommendations = []
+
+    # Query upcoming Indian holidays from database
+    upcoming_festival = None
+    try:
+        with postgres.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    select name, coupon_theme, suggested_discount_percent, suggested_threshold_amount, festival_date
+                    from public.indian_festival_calendar
+                    where festival_date >= current_date
+                    order by festival_date
+                    limit 1
+                """)
+                upcoming_festival = _one(cur)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Failed to fetch festival for coupon recommendations: %s", e)
+
+    if upcoming_festival and upcoming_festival.get("name"):
+        name = upcoming_festival["name"]
+        theme = upcoming_festival["coupon_theme"]
+        discount = int(upcoming_festival.get("suggested_discount_percent") or 15)
+        clean_name = "".join(c for c in name if c.isalnum()).upper()
+        coupon_code = f"{clean_name}{discount}"
+        
+        recommendations.append(
+            {
+                "recommendation_key": f"coupon:festival-{clean_name.lower()}",
+                "name": f"{name} Special",
+                "coupon": coupon_code,
+                "discount_percent": discount,
+                "threshold_amount": round(float(upcoming_festival.get("suggested_threshold_amount") or aov or 499), 2),
+                "reason": f"FESTIVAL CAMPAIGN: {theme} for {name}.",
+                "estimated_value": round(aov * (discount / 100.0), 2) if aov else 50.0,
+                "source_metrics": upcoming_festival,
+            }
+        )
+
     if aov:
         recommendations.append(
             {
@@ -3573,6 +3611,31 @@ def update_settings(
 
 def _build_metric_insights(metrics: dict) -> list[dict]:
     insights: list[dict] = []
+
+    # Check for upcoming holidays in the next 45 days
+    try:
+        with postgres.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    select name, festival_date
+                    from public.indian_festival_calendar
+                    where festival_date >= current_date and festival_date <= current_date + interval '45 days'
+                    order by festival_date
+                    limit 1
+                """)
+                holiday = _one(cur)
+                if holiday and holiday.get("name"):
+                    insights.append(
+                        {
+                            "type": "upcoming_holiday",
+                            "text": f"Upcoming holiday: {holiday['name']} on {holiday['festival_date']}. Plan campaign and launch holiday menu coupons.",
+                            "metrics": {"holiday_name": holiday["name"], "date": str(holiday["festival_date"])},
+                        }
+                    )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Failed to check upcoming holidays: %s", e)
+
     hourly = metrics.get("hourly_revenue") or []
     if hourly:
         peak = max(

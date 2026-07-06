@@ -155,17 +155,18 @@ def update_order_status(order_no: str, new_status: str, performed_by: str | None
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "select status, rider_id from public.orders where order_no = %s",
+                "select status, rider_id, type from public.orders where order_no = %s",
                 (order_no,),
             )
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Order {order_no} not found.")
-            current, db_rider_id = row[0], row[1]
+            current, db_rider_id, order_type = row[0], row[1], row[2]
             
             if new_status in {"out_for_delivery", "delivered"}:
-                if not db_rider_id or (performed_by and str(db_rider_id) != str(performed_by)):
-                    raise ValueError("Only the assigned rider can advance this delivery order.")
+                if order_type == "online":
+                    if not db_rider_id or (performed_by and str(db_rider_id) != str(performed_by)):
+                        raise ValueError("Only the assigned rider can advance this delivery order.")
             
             if new_status not in ORDER_STATUS_SEQUENCE:
                 raise ValueError(f"Unknown status: {new_status}")
@@ -174,7 +175,11 @@ def update_order_status(order_no: str, new_status: str, performed_by: str | None
                 ORDER_STATUS_SEQUENCE.index(current) if current in ORDER_STATUS_SEQUENCE else -1
             )
             new_idx = ORDER_STATUS_SEQUENCE.index(new_status)
-            if new_idx != current_idx + 1:
+            
+            # Non-online orders (takeaway/dine_in) skip 'out_for_delivery'
+            is_valid_jump = (order_type != "online" and current == "ready_for_pickup" and new_status == "delivered")
+            
+            if new_idx != current_idx + 1 and not is_valid_jump:
                 next_legal = (
                     ORDER_STATUS_SEQUENCE[current_idx + 1]
                     if current_idx + 1 < len(ORDER_STATUS_SEQUENCE)

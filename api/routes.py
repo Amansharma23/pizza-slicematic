@@ -381,6 +381,7 @@ class CheckoutReq(BaseModel):
     address: str = ""
     type: str = "online"
     lines: list[CartLineReq] = []
+    coupon_code: str = ""
 
 
 class ConfigReq(BaseModel):
@@ -496,6 +497,136 @@ def place_order(req: OrderReq):
         "payment_mode": mode,
         "name": name,
         "bill": _bill_dict(bill),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Coupon routes
+# --------------------------------------------------------------------------- #
+
+
+class CouponValidateReq(BaseModel):
+    code: str = ""
+    cart_total: float = 0.0
+
+
+@router.get("/coupons/available")
+def list_available_coupons():
+    """Return all active coupons valid today — for the coupon picker popup in checkout."""
+    from db import postgres as local_postgres
+    if not local_postgres.is_enabled():
+        return {"ok": True, "coupons": []}
+    try:
+        with local_postgres.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    select id, name, coupon_code, description,
+                           discount_percent, threshold_amount,
+                           start_date, end_date
+                    from public.discount_rules
+                    where is_active = true
+                      and coupon_code is not null
+                      and (start_date is null or start_date <= current_date)
+                      and (end_date is null or end_date >= current_date)
+                    order by discount_percent desc, name
+                """)
+                cols = [d.name for d in cur.description]
+                rows = []
+                for row in cur.fetchall():
+                    r = dict(zip(cols, row))
+                    from decimal import Decimal
+                    from datetime import date as _d
+                    rows.append({
+                        k: (float(v) if isinstance(v, Decimal) else
+                            v.isoformat() if isinstance(v, _d) else v)
+                        for k, v in r.items()
+                    })
+        return {"ok": True, "coupons": rows}
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}, "coupons": []}
+
+
+@router.post("/coupons/validate")
+def validate_coupon_code(req: CouponValidateReq):
+    """Validate a coupon code against the current cart total. All checks server-side.
+
+    Returns the discount amount and new total if valid; error message if not.
+    The client only renders — money is computed here, never client-side.
+    """
+    code = req.code.strip().upper()
+    if not code:
+        return {"ok": False, "errors": {"code": "Please enter a coupon code."}}
+
+    from db import postgres as local_postgres
+    if not local_postgres.is_enabled():
+        return {"ok": False, "errors": {"db": "Database unavailable."}}
+
+    try:
+        with local_postgres.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    select id, name, coupon_code, description,
+                           discount_percent, threshold_amount,
+                           start_date, end_date, is_active
+                    from public.discount_rules
+                    where upper(coupon_code) = %s
+                    limit 1
+                """, (code,))
+                cols = [d.name for d in cur.description]
+                row = cur.fetchone()
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+
+    if not row:
+        return {"ok": False, "errors": {"code": f"Coupon '{code}' not found."}}
+
+    from decimal import Decimal
+    from datetime import date as _d2
+    rule = dict(zip(cols, row))
+    rule = {k: (float(v) if isinstance(v, Decimal) else v) for k, v in rule.items()}
+
+    if not rule.get("is_active"):
+        return {"ok": False, "errors": {"code": "This coupon is no longer active."}}
+
+    today = _d2.today()
+    start = rule.get("start_date")
+    end = rule.get("end_date")
+    if start and today < start:
+        return {"ok": False, "errors": {"code": f"Coupon valid from {start}."}}
+    if end and today > end:
+        return {"ok": False, "errors": {"code": "This coupon has expired."}}
+
+    threshold = float(rule.get("threshold_amount") or 0)
+    if threshold > 0 and req.cart_total < threshold:
+        return {
+            "ok": False,
+            "errors": {
+                "code": (
+                    f"Minimum order \u20b9{threshold:.0f} required "
+                    f"(cart: \u20b9{req.cart_total:.0f})."
+                )
+            },
+        }
+
+    discount_pct = float(rule.get("discount_percent") or 0)
+    # Coupon reduces the pre-GST subtotal; GST is re-applied after the discount.
+    gst_rate = 0.18
+    subtotal = round(req.cart_total / (1 + gst_rate), 2)
+    discount_amount = round(subtotal * discount_pct / 100.0, 2)
+    new_subtotal = round(subtotal - discount_amount, 2)
+    new_gst = round(new_subtotal * gst_rate, 2)
+    new_total = round(new_subtotal + new_gst, 2)
+
+    return {
+        "ok": True,
+        "coupon_code": rule["coupon_code"],
+        "coupon_name": rule["name"],
+        "description": rule.get("description"),
+        "discount_percent": discount_pct,
+        "discount_amount": discount_amount,
+        "original_total": req.cart_total,
+        "new_total": new_total,
+        "savings": round(req.cart_total - new_total, 2),
     }
 
 
@@ -616,6 +747,49 @@ def checkout_cart(req: CheckoutReq):
 
     if errors:
         return {"ok": False, "errors": errors}
+
+    if req.coupon_code:
+        coupon_err = None
+        code = req.coupon_code.strip().upper()
+        from db import postgres as local_postgres
+        if local_postgres.is_enabled():
+            try:
+                with local_postgres.connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            select discount_percent, threshold_amount, start_date, end_date, is_active
+                            from public.discount_rules where upper(coupon_code) = %s limit 1
+                        """, (code,))
+                        row = cur.fetchone()
+                if not row:
+                    coupon_err = f"Coupon '{code}' not found."
+                else:
+                    d_pct, t_amt, s_date, e_date, is_act = row
+                    from datetime import date as _d2
+                    today = _d2.today()
+                    if not is_act:
+                        coupon_err = "This coupon is no longer active."
+                    elif s_date and today < s_date:
+                        coupon_err = f"Coupon valid from {s_date}."
+                    elif e_date and today > e_date:
+                        coupon_err = "This coupon has expired."
+                    elif t_amt and t_amt > 0 and totals["total"] < t_amt:
+                        coupon_err = f"Minimum order \u20b9{float(t_amt):.0f} required."
+                    else:
+                        gst_rate = 0.18
+                        # Replace bulk discount with coupon discount
+                        subtotal = totals["subtotal"]
+                        discount_amount = round(subtotal * float(d_pct) / 100.0, 2)
+                        new_subtotal = round(subtotal - discount_amount, 2)
+                        new_gst = round(new_subtotal * gst_rate, 2)
+                        new_total = round(new_subtotal + new_gst, 2)
+                        totals["discount"] = discount_amount
+                        totals["gst"] = new_gst
+                        totals["total"] = new_total
+            except Exception as exc:
+                coupon_err = f"Coupon check failed: {exc}"
+        if coupon_err:
+            return {"ok": False, "errors": {"coupon_code": coupon_err}}
 
     if db_orders is None:
         return {"ok": False, "errors": {"db": "Order database is unavailable."}}
@@ -771,6 +945,165 @@ def delivery_stats(claims: dict = _delivery):
         return {"ok": True, **db_orders.get_delivery_stats()}
     except Exception as exc:
         return {"ok": False, "errors": {"db": str(exc)}}
+
+
+# --------------------------------------------------------------------------- #
+# Order feedback (rating + review) — writes to customer_feedback
+# --------------------------------------------------------------------------- #
+
+
+class FeedbackReq(BaseModel):
+    rating: int = 0           # 1–5 stars
+    feedback_text: str = ""   # optional text review
+
+
+@router.get("/orders/{order_no}/feedback")
+def get_order_feedback(order_no: str):
+    """Check whether feedback has already been submitted for this order.
+
+    Returns has_feedback=True/False and the existing row if present.
+    Used by the frontend to decide whether to show the rating prompt or a
+    'Thanks for your review' banner.
+    """
+    from db import postgres as local_postgres
+    if not local_postgres.is_enabled():
+        return {"ok": True, "has_feedback": False}
+    try:
+        with local_postgres.connect() as conn:
+            with conn.cursor() as cur:
+                # Look up the order uuid from order_no first
+                cur.execute(
+                    "SELECT id FROM public.orders WHERE order_no = %s LIMIT 1",
+                    (order_no,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"ok": False, "errors": {"order": "Order not found."}}
+                order_id = row[0]
+
+                cur.execute(
+                    """
+                    SELECT id, rating, feedback_text, created_at
+                    FROM public.customer_feedback
+                    WHERE order_id = %s
+                    LIMIT 1
+                    """,
+                    (str(order_id),),
+                )
+                fb = cur.fetchone()
+                if fb:
+                    from datetime import datetime, timezone
+                    created = fb[3]
+                    return {
+                        "ok": True,
+                        "has_feedback": True,
+                        "rating": fb[1],
+                        "feedback_text": fb[2],
+                        "created_at": created.isoformat() if hasattr(created, "isoformat") else str(created),
+                    }
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+    return {"ok": True, "has_feedback": False}
+
+
+@router.post("/orders/{order_no}/feedback")
+def submit_order_feedback(order_no: str, req: FeedbackReq):
+    """Submit a star rating (1–5) and optional text review for a delivered order.
+
+    Rules enforced server-side:
+    - Order must exist and have status 'delivered'
+    - Rating must be 1–5
+    - Exactly one feedback per order (duplicate returns the existing row)
+    - feedback_text is optional; if blank we store an empty string
+    """
+    if req.rating < 1 or req.rating > 5:
+        return {"ok": False, "errors": {"rating": "Rating must be between 1 and 5."}}
+
+    from db import postgres as local_postgres
+    if not local_postgres.is_enabled():
+        return {"ok": False, "errors": {"db": "Database unavailable."}}
+
+    try:
+        with local_postgres.connect() as conn:
+            with conn.cursor() as cur:
+                # Fetch the order
+                cur.execute(
+                    """
+                    SELECT id, status, customer_name, customer_phone
+                    FROM public.orders
+                    WHERE order_no = %s
+                    LIMIT 1
+                    """,
+                    (order_no,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"ok": False, "errors": {"order": "Order not found."}}
+                order_id, status, cust_name, cust_phone = row
+
+                if status != "delivered":
+                    return {
+                        "ok": False,
+                        "errors": {"order": "Feedback can only be submitted after delivery."},
+                    }
+
+                # Check for duplicate
+                cur.execute(
+                    "SELECT id, rating FROM public.customer_feedback WHERE order_id = %s LIMIT 1",
+                    (str(order_id),),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    return {
+                        "ok": True,
+                        "already_submitted": True,
+                        "rating": existing[1],
+                        "message": "Feedback already recorded. Thank you!",
+                    }
+
+                # Determine sentiment from rating
+                if req.rating >= 4:
+                    sentiment_label = "positive"
+                    sentiment_score = 0.8 if req.rating == 4 else 1.0
+                elif req.rating == 3:
+                    sentiment_label = "neutral"
+                    sentiment_score = 0.5
+                else:
+                    sentiment_label = "negative"
+                    sentiment_score = 0.1 if req.rating == 2 else 0.0
+
+                cur.execute(
+                    """
+                    INSERT INTO public.customer_feedback
+                        (order_id, customer_name, customer_phone, channel,
+                         rating, feedback_text, sentiment_label, sentiment_score,
+                         topics, source_metadata)
+                    VALUES (%s, %s, %s, 'app', %s, %s, %s, %s, '[]'::jsonb,
+                            jsonb_build_object('order_no', %s::text))
+                    RETURNING id, created_at
+                    """,
+                    (
+                        str(order_id),
+                        cust_name or "",
+                        cust_phone or "",
+                        req.rating,
+                        req.feedback_text.strip() or "",
+                        sentiment_label,
+                        sentiment_score,
+                        order_no,
+                    ),
+                )
+                new_row = cur.fetchone()
+    except Exception as exc:
+        return {"ok": False, "errors": {"db": str(exc)}}
+
+    return {
+        "ok": True,
+        "already_submitted": False,
+        "feedback_id": str(new_row[0]),
+        "rating": req.rating,
+        "message": "Thank you for your feedback!",
+    }
 
 
 @router.get("/config")
