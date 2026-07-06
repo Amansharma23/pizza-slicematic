@@ -296,7 +296,7 @@ export function PosCustomize({
                         type="button"
                         aria-label={`Remove ${t.name}`}
                         onClick={(e) => { e.stopPropagation(); removeTopping(t.id); }}
-                        className="grid size-7 place-items-center rounded-full bg-background border border-border text-foreground hover:text-primary [&_svg]:size-3.5"
+                        className="grid size-7 place-items-center rounded-full bg-primary text-primary-foreground [&_svg]:size-3.5"
                       >
                         -
                       </button>
